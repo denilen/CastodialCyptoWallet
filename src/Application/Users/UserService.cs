@@ -1,7 +1,10 @@
+using Ardalis.Result;
+using AutoMapper;
 using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Common.Services;
 using CryptoWallet.Application.Users.Dtos;
 using CryptoWallet.Domain.Users;
+using Microsoft.Extensions.Logging;
 
 namespace CryptoWallet.Application.Users;
 

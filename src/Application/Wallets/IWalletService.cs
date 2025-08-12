@@ -1,3 +1,4 @@
+using Ardalis.Result;
 using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Wallets.Dtos;
 using CryptoWallet.Domain.Users;

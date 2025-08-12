@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.OpenApi.Models;
+using CryptoWallet.API.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,9 +36,46 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 
-    // Enable XML comments for Swagger
-    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    // Enable XML comments for Swagger from all projects
+    var apiXmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var apiXmlPath = Path.Combine(AppContext.BaseDirectory, apiXmlFile);
+    options.IncludeXmlComments(apiXmlPath);
+
+    // Include XML documentation from Application project
+    var applicationXmlFile = "CryptoWallet.Application.xml";
+    var applicationXmlPath = Path.Combine(AppContext.BaseDirectory, applicationXmlFile);
+    if (File.Exists(applicationXmlPath))
+    {
+        options.IncludeXmlComments(applicationXmlPath);
+    }
+
+    // Include XML documentation from Domain project
+    var domainXmlFile = "CryptoWallet.Domain.xml";
+    var domainXmlPath = Path.Combine(AppContext.BaseDirectory, domainXmlFile);
+    if (File.Exists(domainXmlPath))
+    {
+        options.IncludeXmlComments(domainXmlPath);
+    }
+    
+    // Enable annotations for Swagger
+    options.EnableAnnotations();
+    
+    // Add operation filters for better documentation
+    options.OperationFilter<AddResponseHeadersFilter>();
+    options.OperationFilter<AppendAuthorizeToSummaryOperationFilter>();
+    
+    // Add a custom operation filter to set the description from XML comments
+    options.OperationFilter<SwaggerDefaultValues>();
+    
+    // Add a custom schema filter to set the description from XML comments
+    options.SchemaFilter<SwaggerExcludeFilter>();
+    
+    // Add a custom document filter to set the API version in the UI
+    options.DocumentFilter<SwaggerVersionMapping>();
+    
+    // Set the comments path for the Swagger JSON and UI
+    var basePath = AppContext.BaseDirectory;
+    var xmlPath = Path.Combine(basePath, apiXmlFile);
     options.IncludeXmlComments(xmlPath);
 
     // Add JWT Authentication
@@ -91,10 +129,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
-        options.RoutePrefix = string.Empty; // Serve Swagger UI at the app's root
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "CryptoWallet API V1");
+        options.RoutePrefix = string.Empty; // Serve the Swagger UI at the root URL
     });
 }
+
+app.UseGlobalExceptionHandler();
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");

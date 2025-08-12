@@ -1,5 +1,6 @@
 using Ardalis.Result;
 using CryptoWallet.Application.Common.Interfaces;
+using CryptoWallet.Application.Common.Models;
 using CryptoWallet.Application.Transactions.Dtos;
 using CryptoWallet.Domain.Users;
 
@@ -77,12 +78,17 @@ public interface ITransactionService : IService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets transactions within a date range
+    /// Gets transactions within a date range with optional filtering
     /// </summary>
     /// <param name="startDate">Start date (inclusive)</param>
     /// <param name="endDate">End date (inclusive)</param>
     /// <param name="pageNumber">Page number (1-based)</param>
     /// <param name="pageSize">Number of items per page</param>
+    /// <param name="walletAddress">Optional wallet address to filter by</param>
+    /// <param name="status">Optional status to filter by</param>
+    /// <param name="type">Optional transaction type to filter by</param>
+    /// <param name="minAmount">Optional minimum amount to filter by</param>
+    /// <param name="maxAmount">Optional maximum amount to filter by</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paginated list of transaction DTOs or an error</returns>
     Task<Result<PaginatedList<TransactionDto>>> GetTransactionsByDateRangeAsync(
@@ -90,6 +96,11 @@ public interface ITransactionService : IService
         DateTimeOffset endDate,
         int pageNumber = 1,
         int pageSize = 20,
+        string? walletAddress = null,
+        string? status = null,
+        string? type = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

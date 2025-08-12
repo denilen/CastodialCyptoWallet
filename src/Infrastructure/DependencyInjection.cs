@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using CryptoWallet.Application.Common.Interfaces;
+using CryptoWallet.Infrastructure.Services;
 
 namespace CryptoWallet.Infrastructure;
 
@@ -52,6 +54,9 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IWalletRepository, WalletRepository>();
         services.AddScoped<ITransactionRepository, TransactionRepository>();
+
+        // Register logger service
+        services.AddScoped(typeof(ILoggerService<>), typeof(LoggerService<>));
 
         // Registration of services
         services.Scan(scan => scan

@@ -1,9 +1,20 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Ardalis.Result;
+using AutoMapper;
+using AutoMapper.QueryableExtensions;
+using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Common.Models;
 using CryptoWallet.Application.Common.Services;
 using CryptoWallet.Application.Transactions.Dtos;
 using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CryptoWallet.Application.Transactions;
 
@@ -96,7 +107,7 @@ public class TransactionService : BaseService, ITransactionService
             }
 
             // Build query with additional filtering options
-            var query = _transactionRepository.GetQueryable()
+            var query = _transactionRepository.GetAll()
                 .Where(t => t.Wallet.Address == walletAddress)
                 .OrderByDescending(t => t.CreatedAt);
 
@@ -137,7 +148,7 @@ public class TransactionService : BaseService, ITransactionService
         {
             _logger.LogInformation("Fetching all transactions for user ID: {UserId}", user.Id);
 
-            var query = _transactionRepository.GetQueryable()
+            var query = _transactionRepository.GetAll()
                 .Where(t => t.Wallet.UserId == user.Id)
                 .OrderByDescending(t => t.CreatedAt);
 
@@ -172,7 +183,7 @@ public class TransactionService : BaseService, ITransactionService
 
             var normalizedStatus = status.Trim().ToLowerInvariant();
 
-            var query = _transactionRepository.GetQueryable()
+            var query = _transactionRepository.GetAll()
                 .Where(t => t.Status.ToLower() == normalizedStatus)
                 .OrderByDescending(t => t.CreatedAt);
 
@@ -207,7 +218,7 @@ public class TransactionService : BaseService, ITransactionService
 
             var normalizedType = type.Trim().ToLowerInvariant();
 
-            var query = _transactionRepository.GetQueryable()
+            var query = _transactionRepository.GetAll()
                 .Where(t => t.Type.ToLower() == normalizedType)
                 .OrderByDescending(t => t.CreatedAt);
 
@@ -264,7 +275,7 @@ public class TransactionService : BaseService, ITransactionService
             var effectiveEndDate = endDate > DateTimeOffset.UtcNow ? DateTimeOffset.UtcNow : endDate;
 
             // Build query with filters
-            var query = _transactionRepository.GetQueryable()
+            var query = _transactionRepository.GetAll()
                 .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= effectiveEndDate);
 
             // Apply additional filters if provided
@@ -370,8 +381,8 @@ public class TransactionService : BaseService, ITransactionService
                 transaction.MarkAsCompleted();
             }
 
-            await _transactionRepository.UpdateAsync(transaction, cancellationToken);
-            await _transactionRepository.SaveChangesAsync(cancellationToken);
+            await _transactionRepository.UpdateAsync(transaction);
+            await _transactionRepository.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Successfully updated status of transaction {TransactionId} from {OldStatus} to {NewStatus}",
@@ -427,63 +438,58 @@ public class TransactionService : BaseService, ITransactionService
             return false;
 
         // Define valid transaction statuses
-        var validStatuses = new[] 
-        { 
-            "pending",
-            "processing",
-            "completed",
-            "failed",
-            "cancelled"
-        };
-
-        return validStatuses.Contains(status.ToLowerInvariant());
+        return Enum.TryParse<TransactionStatusEnum>(status, true, out _);
     }
 
     private bool IsValidStatusTransition(string currentStatus, string newStatus)
     {
-        // Normalize the statuses for comparison
-        currentStatus = currentStatus?.Trim().ToLowerInvariant() ?? string.Empty;
-        newStatus = newStatus?.Trim().ToLowerInvariant() ?? string.Empty;
+        // Parse the status enums
+        if (!Enum.TryParse<TransactionStatusEnum>(currentStatus, true, out var currentStatusEnum) ||
+            !Enum.TryParse<TransactionStatusEnum>(newStatus, true, out var newStatusEnum))
+        {
+            _logger.LogWarning("Invalid status values: Current='{CurrentStatus}', New='{NewStatus}'", currentStatus, newStatus);
+            return false;
+        }
 
         // If the statuses are the same, it's always a valid transition (idempotent operation)
-        if (currentStatus == newStatus)
+        if (currentStatusEnum == newStatusEnum)
             return true;
 
         // Define valid status transitions with more granular control
-        var validTransitions = new Dictionary<string, HashSet<string>>
+        var validTransitions = new Dictionary<TransactionStatusEnum, HashSet<TransactionStatusEnum>>
         {
             // Pending can go to processing, completed, failed, or cancelled
-            ["pending"] = new HashSet<string> 
-            { 
-                "processing",  // Transaction is being processed
-                "completed",   // Direct completion for simple transactions
-                "failed",      // Transaction failed
-                "cancelled"    // User or system cancelled the transaction
+            [TransactionStatusEnum.Pending] = new HashSet<TransactionStatusEnum>
+            {
+                TransactionStatusEnum.Processing,  // Transaction is being processed
+                TransactionStatusEnum.Completed,   // Direct completion for simple transactions
+                TransactionStatusEnum.Failed,      // Transaction failed
+                TransactionStatusEnum.Cancelled    // User or system cancelled the transaction
             },
 
             // Processing can go to completed or failed
-            ["processing"] = new HashSet<string> 
-            { 
-                "completed",   // Successfully processed
-                "failed",      // Processing failed
-                "cancelled"    // User or system cancelled during processing
+            [TransactionStatusEnum.Processing] = new HashSet<TransactionStatusEnum>
+            {
+                TransactionStatusEnum.Completed,   // Successfully processed
+                TransactionStatusEnum.Failed,      // Processing failed
+                TransactionStatusEnum.Cancelled    // User or system cancelled during processing
             },
 
             // Completed is a terminal state (no further transitions allowed)
-            ["completed"] = new HashSet<string>(),
+            [TransactionStatusEnum.Completed] = new HashSet<TransactionStatusEnum>(),
             
             // Failed can be retried (goes back to pending)
-            ["failed"] = new HashSet<string> 
-            { 
-                "pending"      // Allow retrying failed transactions
+            [TransactionStatusEnum.Failed] = new HashSet<TransactionStatusEnum>
+            {
+                TransactionStatusEnum.Pending      // Allow retrying failed transactions
             },
 
             // Cancelled is a terminal state (no further transitions allowed)
-            ["cancelled"] = new HashSet<string>()
+            [TransactionStatusEnum.Cancelled] = new HashSet<TransactionStatusEnum>()
         };
 
         // If the current status isn't in our dictionary, log a warning but allow the transition
-        if (!validTransitions.ContainsKey(currentStatus))
+        if (!validTransitions.ContainsKey(currentStatusEnum))
         {
             _logger.LogWarning("Unknown current status '{CurrentStatus}' during status transition validation. " +
                              "Allowing transition to '{NewStatus}' but this should be reviewed.", 
@@ -492,15 +498,16 @@ public class TransactionService : BaseService, ITransactionService
         }
 
         // Check if the transition is valid
-        var isValid = validTransitions[currentStatus].Contains(newStatus);
+        var allowedTransitions = validTransitions[currentStatusEnum];
+        var isValid = allowedTransitions.Contains(newStatusEnum);
         
         if (!isValid)
         {
-            _logger.Warning("Invalid status transition from '{CurrentStatus}' to '{NewStatus}'. " +
-                          "Allowed transitions: {AllowedTransitions}",
-                          currentStatus, 
-                          newStatus, 
-                          string.Join(", ", validTransitions[currentStatus]));
+            _logger.LogWarning("Invalid status transition from '{CurrentStatus}' to '{NewStatus}'. " +
+                            "Allowed transitions: {AllowedTransitions}",
+                            currentStatusEnum, 
+                            newStatusEnum, 
+                            string.Join(", ", allowedTransitions));
         }
 
         return isValid;
