@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{FDD0848D-406B-492E-B22D-92A5431B862A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CryptoWallet.Domain", "src\Domain\CryptoWallet.Domain.csproj", "{71894CD0-4F03-4DD4-82FD-0897C2C380DA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CryptoWallet.Application", "src\Application\CryptoWallet.Application.csproj", "{D02EFA33-714B-4879-899E-6FD7A6F23399}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CryptoWallet.Infrastructure", "src\Infrastructure\CryptoWallet.Infrastructure.csproj", "{7F2651E4-5D56-4C77-B3CA-B87C65F8DA94}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CryptoWallet.API", "src\API\CryptoWallet.API.csproj", "{6422A86E-314A-4923-9B4D-44E74958D67D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{9924BFB1-F798-4D90-9E91-46A8E7321006}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CryptoWallet.UnitTests", "tests\UnitTests\CryptoWallet.UnitTests.csproj", "{6B26C4A5-0D4C-4A83-8C17-C481F8D39A58}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CryptoWallet.IntegrationTests", "tests\IntegrationTests\CryptoWallet.IntegrationTests.csproj", "{82C4671C-19AA-415F-9FBC-5825B9D025FA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{71894CD0-4F03-4DD4-82FD-0897C2C380DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71894CD0-4F03-4DD4-82FD-0897C2C380DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71894CD0-4F03-4DD4-82FD-0897C2C380DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71894CD0-4F03-4DD4-82FD-0897C2C380DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D02EFA33-714B-4879-899E-6FD7A6F23399}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D02EFA33-714B-4879-899E-6FD7A6F23399}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D02EFA33-714B-4879-899E-6FD7A6F23399}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D02EFA33-714B-4879-899E-6FD7A6F23399}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F2651E4-5D56-4C77-B3CA-B87C65F8DA94}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F2651E4-5D56-4C77-B3CA-B87C65F8DA94}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F2651E4-5D56-4C77-B3CA-B87C65F8DA94}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F2651E4-5D56-4C77-B3CA-B87C65F8DA94}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6422A86E-314A-4923-9B4D-44E74958D67D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6422A86E-314A-4923-9B4D-44E74958D67D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6422A86E-314A-4923-9B4D-44E74958D67D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6422A86E-314A-4923-9B4D-44E74958D67D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6B26C4A5-0D4C-4A83-8C17-C481F8D39A58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B26C4A5-0D4C-4A83-8C17-C481F8D39A58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B26C4A5-0D4C-4A83-8C17-C481F8D39A58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B26C4A5-0D4C-4A83-8C17-C481F8D39A58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{82C4671C-19AA-415F-9FBC-5825B9D025FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82C4671C-19AA-415F-9FBC-5825B9D025FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82C4671C-19AA-415F-9FBC-5825B9D025FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82C4671C-19AA-415F-9FBC-5825B9D025FA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{71894CD0-4F03-4DD4-82FD-0897C2C380DA} = {FDD0848D-406B-492E-B22D-92A5431B862A}
+		{D02EFA33-714B-4879-899E-6FD7A6F23399} = {FDD0848D-406B-492E-B22D-92A5431B862A}
+		{7F2651E4-5D56-4C77-B3CA-B87C65F8DA94} = {FDD0848D-406B-492E-B22D-92A5431B862A}
+		{6422A86E-314A-4923-9B4D-44E74958D67D} = {FDD0848D-406B-492E-B22D-92A5431B862A}
+		{6B26C4A5-0D4C-4A83-8C17-C481F8D39A58} = {9924BFB1-F798-4D90-9E91-46A8E7321006}
+		{82C4671C-19AA-415F-9FBC-5825B9D025FA} = {9924BFB1-F798-4D90-9E91-46A8E7321006}
+	EndGlobalSection
+EndGlobal
