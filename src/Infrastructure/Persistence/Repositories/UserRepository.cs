@@ -1,5 +1,8 @@
 using System.Data;
+using CryptoWallet.Domain.Interfaces.Repositories;
 using CryptoWallet.Domain.Users;
+using CryptoWallet.Domain.Wallets;
+using CryptoWallet.Infrastructure.Extensions;
 using CryptoWallet.Infrastructure.Persistence.Repositories.Base;
 using Microsoft.EntityFrameworkCore;
 
@@ -43,23 +46,23 @@ public class UserRepository : Repository<User>, IUserRepository
         if (user == null)
             throw new ArgumentNullException(nameof(user));
 
-        // Начинаем транзакцию
-        await using var transaction =
-            await Context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        // Start transaction
+        await using var transaction = await Context.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         try
         {
-            // Проверяем, существует ли пользователь с таким email
+            // Check if user with this email already exists
             if (await ExistsWithEmailAsync(user.Email, cancellationToken))
             {
                 throw new InvalidOperationException($"User with email '{user.Email}' already exists.");
             }
 
-            // Добавляем пользователя
+            // Add user
             await DbSet.AddAsync(user, cancellationToken);
             await Context.SaveChangesAsync(cancellationToken);
 
-            // Получаем все активные криптовалюты
+            // Get all active cryptocurrencies
             var cryptocurrencies = await Context.Cryptocurrencies
                 .Where(c => c.IsActive)
                 .ToListAsync(cancellationToken);
@@ -69,42 +72,71 @@ public class UserRepository : Repository<User>, IUserRepository
                 throw new InvalidOperationException("No active cryptocurrencies found to create wallets.");
             }
 
-            // Создаем кошельки для каждой криптовалюты
+            // Create wallets for each cryptocurrency
             var wallets = new List<Wallet>();
             foreach (var crypto in cryptocurrencies)
             {
-                // Генерируем уникальный адрес кошелька
+                // Generate unique wallet address
                 var walletAddress = GenerateWalletAddress(crypto.Code, user.Id);
-
-                wallets.Add(new Wallet(user, crypto, walletAddress));
+                var wallet = new Wallet(user, crypto, walletAddress);
+                
+                // Initialize collections to avoid null reference exceptions
+                if (crypto.Wallets == null)
+                {
+                    crypto.GetType().GetProperty("Wallets")?.SetValue(crypto, new List<Wallet>());
+                }
+                
+                wallets.Add(wallet);
             }
 
-            // Добавляем кошельки
+            // Add wallets
             await Context.Wallets.AddRangeAsync(wallets, cancellationToken);
             await Context.SaveChangesAsync(cancellationToken);
 
-            // Фиксируем транзакцию
+            // Commit transaction
             await transaction.CommitAsync(cancellationToken);
 
-            // Возвращаем пользователя с загруженными кошельками
+            // Return user with loaded wallets
             return await DbSet
                 .Include(u => u.Wallets)
                 .ThenInclude(w => w.Cryptocurrency)
                 .FirstAsync(u => u.Id == user.Id, cancellationToken);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // Log the exception if needed
             await transaction.RollbackAsync(cancellationToken);
-            throw;
+            throw new InvalidOperationException("Failed to create user with wallets. See inner exception for details.", ex);
         }
     }
 
     private static string GenerateWalletAddress(string cryptoCode, Guid userId)
     {
-        // In the real application, there should be a more complex logic of the address of the address
-        // Given the specifics of the blockchain of the selected cryptocurrency
+        if (string.IsNullOrWhiteSpace(cryptoCode))
+            throw new ArgumentException("Cryptocurrency code cannot be null or whitespace.", nameof(cryptoCode));
+        if (userId == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+
+        string address;
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var random = new Random().Next(1000, 9999);
-        return $"{cryptoCode.ToLower()}_{userId.ToString("N")[..8]}_{timestamp}_{random}";
+        
+        // Generate a basic address based on the crypto code and user ID
+        address = $"{cryptoCode.ToLower()}_{userId.ToString("N")[..8]}_{timestamp}_{random}";
+        
+        // Ensure the generated address meets our validation requirements
+        if (!address.IsValidWalletAddress(cryptoCode))
+        {
+            // If the basic pattern doesn't match, fall back to a more generic but valid format
+            address = $"wallet_{cryptoCode.ToLower()}_{userId:N}_{timestamp}";
+            
+            // If still not valid, throw an exception
+            if (!address.IsValidWalletAddress())
+            {
+                throw new InvalidOperationException("Failed to generate a valid wallet address.");
+            }
+        }
+        
+        return address;
     }
 }

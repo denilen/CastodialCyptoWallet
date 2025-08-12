@@ -1,4 +1,4 @@
-namespace CryptoWallet.Application.Wallets.Dtos;
+namespace CryptoWallet.Domain.Models.DTOs.Wallets;
 
 /// <summary>
 /// Transaction data transfer object

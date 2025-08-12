@@ -1,11 +1,13 @@
 using System.Reflection;
 using Microsoft.OpenApi.Models;
 using CryptoWallet.API.Filters;
+using CryptoWallet.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
 
 // Add API versioning
 builder.Services.AddApiVersioning(options =>
@@ -134,7 +136,8 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseGlobalExceptionHandler();
+// Use the fully qualified name to resolve the ambiguity
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");

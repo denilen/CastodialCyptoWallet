@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using CryptoWallet.Domain.Common;
+using CryptoWallet.Domain.Interfaces.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace CryptoWallet.Infrastructure.Persistence.Repositories.Base;
@@ -58,9 +59,23 @@ public abstract class Repository<TEntity> : IRepository<TEntity>
     }
 
     /// <inheritdoc />
+    public virtual Task UpdateAsync(TEntity entity, CancellationToken cancellationToken = default)
+    {
+        DbSet.Update(entity);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public virtual void Remove(TEntity entity)
     {
         DbSet.Remove(entity);
+    }
+
+    /// <inheritdoc />
+    public virtual Task RemoveAsync(TEntity entity, CancellationToken cancellationToken = default)
+    {
+        DbSet.Remove(entity);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -69,7 +84,7 @@ public abstract class Repository<TEntity> : IRepository<TEntity>
         var entity = await GetByIdAsync(id, cancellationToken);
         if (entity != null)
         {
-            DbSet.Remove(entity);
+            await RemoveAsync(entity, cancellationToken);
         }
     }
 
@@ -80,15 +95,34 @@ public abstract class Repository<TEntity> : IRepository<TEntity>
     }
 
     /// <inheritdoc />
+    public virtual Task RemoveRangeAsync(IEnumerable<TEntity> entities, CancellationToken cancellationToken = default)
+    {
+        DbSet.RemoveRange(entities);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public virtual async Task<bool> ExistsAsync(Expression<Func<TEntity, bool>> predicate,
-                                                CancellationToken cancellationToken = default)
+                                              CancellationToken cancellationToken = default)
     {
         return await DbSet.AnyAsync(predicate, cancellationToken);
     }
 
     /// <inheritdoc />
+    public virtual Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        return DbSet.AnyAsync(predicate, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public virtual Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return DbSet.CountAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
     public virtual async Task<int> CountAsync(Expression<Func<TEntity, bool>>? predicate = null,
-                                              CancellationToken cancellationToken = default)
+                                            CancellationToken cancellationToken = default)
     {
         return predicate != null
             ? await DbSet.CountAsync(predicate, cancellationToken)

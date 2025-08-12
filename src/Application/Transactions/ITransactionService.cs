@@ -17,7 +17,7 @@ public interface ITransactionService : IService
     /// <param name="transactionId">The transaction ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Transaction DTO or an error</returns>
-    Task<Result<TransactionDto>> GetTransactionByIdAsync(
+    Task<Ardalis.Result.Result<TransactionDto>> GetTransactionByIdAsync(
         Guid transactionId,
         CancellationToken cancellationToken = default);
 
@@ -29,7 +29,7 @@ public interface ITransactionService : IService
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paginated list of transaction DTOs or an error</returns>
-    Task<Result<PaginatedList<TransactionDto>>> GetWalletTransactionsAsync(
+    Task<Ardalis.Result.Result<PaginatedList<TransactionDto>>> GetWalletTransactionsAsync(
         string walletAddress,
         int pageNumber = 1,
         int pageSize = 20,
@@ -43,7 +43,7 @@ public interface ITransactionService : IService
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paginated list of transaction DTOs or an error</returns>
-    Task<Result<PaginatedList<TransactionDto>>> GetUserTransactionsAsync(
+    Task<Ardalis.Result.Result<PaginatedList<TransactionDto>>> GetUserTransactionsAsync(
         User user,
         int pageNumber = 1,
         int pageSize = 20,
@@ -57,7 +57,7 @@ public interface ITransactionService : IService
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paginated list of transaction DTOs or an error</returns>
-    Task<Result<PaginatedList<TransactionDto>>> GetTransactionsByStatusAsync(
+    Task<Ardalis.Result.Result<PaginatedList<TransactionDto>>> GetTransactionsByStatusAsync(
         string status,
         int pageNumber = 1,
         int pageSize = 20,
@@ -71,7 +71,7 @@ public interface ITransactionService : IService
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paginated list of transaction DTOs or an error</returns>
-    Task<Result<PaginatedList<TransactionDto>>> GetTransactionsByTypeAsync(
+    Task<Ardalis.Result.Result<PaginatedList<TransactionDto>>> GetTransactionsByTypeAsync(
         string type,
         int pageNumber = 1,
         int pageSize = 20,
@@ -91,7 +91,7 @@ public interface ITransactionService : IService
     /// <param name="maxAmount">Optional maximum amount to filter by</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paginated list of transaction DTOs or an error</returns>
-    Task<Result<PaginatedList<TransactionDto>>> GetTransactionsByDateRangeAsync(
+    Task<Ardalis.Result.Result<PaginatedList<TransactionDto>>> GetTransactionsByDateRangeAsync(
         DateTimeOffset startDate,
         DateTimeOffset endDate,
         int pageNumber = 1,
@@ -111,7 +111,7 @@ public interface ITransactionService : IService
     /// <param name="notes">Optional notes about the status update</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated transaction DTO or an error</returns>
-    Task<Result<TransactionDto>> UpdateTransactionStatusAsync(
+    Task<Ardalis.Result.Result<TransactionDto>> UpdateTransactionStatusAsync(
         Guid transactionId,
         string status,
         string? notes = null,

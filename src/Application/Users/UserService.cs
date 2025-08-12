@@ -3,6 +3,7 @@ using AutoMapper;
 using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Common.Services;
 using CryptoWallet.Application.Users.Dtos;
+using CryptoWallet.Domain.Interfaces.Repositories;
 using CryptoWallet.Domain.Users;
 using Microsoft.Extensions.Logging;
 
@@ -53,20 +54,25 @@ public class UserService : BaseService, IUserService
             var user = new User(
                 email: request.Email,
                 passwordHash: passwordHash,
-                name: request.Name,
-                phoneNumber: request.PhoneNumber,
-                countryCode: request.CountryCode,
-                ipAddress: request.IpAddress,
-                userAgent: request.UserAgent);
+                firstName: request.FirstName,
+                lastName: request.LastName);
 
-            // Save user and create wallets
-            var createdUser = await _userRepository.CreateUserWithWalletsAsync(user, cancellationToken);
+            // Set additional properties if needed
+            user.UpdateInfo(request.FirstName, request.LastName);
 
-            LogInformation("Successfully registered user with ID: {UserId}", createdUser.Id);
+            // Save user
+            await _userRepository.AddAsync(user, cancellationToken);
+            await _userRepository.SaveChangesAsync(cancellationToken);
+            
+            // Get the created user with all related data
+            var createdUser = await _userRepository.GetByIdAsync(user.Id, cancellationToken);
+
+            // Log information
+            Logger.LogInformation("Successfully registered user with ID: {UserId}", createdUser.Id);
 
             // Map to DTO and return
             var result = _mapper.Map<UserDto>(createdUser);
-            return Result.Success(result);
+            return Ardalis.Result.Result.Success(result);
         }
         catch (Exception ex)
         {

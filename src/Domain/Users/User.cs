@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using Ardalis.GuardClauses;
 using CryptoWallet.Domain.Common;
+using CryptoWallet.Domain.Wallets;
 
 namespace CryptoWallet.Domain.Users;
 
@@ -37,6 +39,12 @@ public class User : AuditableEntity
     /// Date and time of the user's last login
     /// </summary>
     public DateTimeOffset? LastLoginDate { get; private set; }
+
+    /// <summary>
+    /// Collection of user's wallets
+    /// </summary>
+    private readonly List<Wallet> _wallets = new();
+    public virtual IReadOnlyCollection<Wallet> Wallets => _wallets.AsReadOnly();
 
     // Private constructor for EF Core
     private User()

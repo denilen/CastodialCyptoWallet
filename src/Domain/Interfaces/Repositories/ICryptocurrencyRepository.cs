@@ -1,7 +1,7 @@
 using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Currencies;
 
-namespace CryptoWallet.Domain.Currencies;
+namespace CryptoWallet.Domain.Interfaces.Repositories;
 
 /// <summary>
 /// Repository for cryptocurrency operations

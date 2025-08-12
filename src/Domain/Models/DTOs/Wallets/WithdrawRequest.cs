@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace CryptoWallet.Application.Wallets.Dtos;
+namespace CryptoWallet.Domain.Models.DTOs.Wallets;
 
 /// <summary>
 /// Request DTO for withdrawing funds from a wallet

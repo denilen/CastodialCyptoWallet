@@ -1,6 +1,7 @@
 using CryptoWallet.Domain.Common;
+using CryptoWallet.Domain.Users;
 
-namespace CryptoWallet.Domain.Users;
+namespace CryptoWallet.Domain.Interfaces.Repositories;
 
 /// <summary>
 /// Repository for user data access operations

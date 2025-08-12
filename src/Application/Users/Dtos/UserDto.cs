@@ -1,5 +1,7 @@
 namespace CryptoWallet.Application.Users.Dtos;
 
+using CryptoWallet.Domain.Models.DTOs.Wallets;
+
 /// <summary>
 /// User data transfer object
 /// </summary>

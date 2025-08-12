@@ -1,6 +1,8 @@
 using CryptoWallet.Domain.Currencies;
+using CryptoWallet.Domain.Interfaces.Repositories;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
+using CryptoWallet.Infrastructure.Extensions;
 using CryptoWallet.Infrastructure.Persistence.Repositories.Base;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,9 +26,13 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
     {
         if (user == null)
             throw new ArgumentNullException(nameof(user));
+        if (user.Id == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(user));
 
         if (cryptocurrency == null)
             throw new ArgumentNullException(nameof(cryptocurrency));
+        if (cryptocurrency.Id == Guid.Empty)
+            throw new ArgumentException("Cryptocurrency ID cannot be empty.", nameof(cryptocurrency));
 
         return await DbSet
             .AsNoTracking()
@@ -44,6 +50,8 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
     {
         if (user == null)
             throw new ArgumentNullException(nameof(user));
+        if (user.Id == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(user));
 
         return await DbSet
             .AsNoTracking()
@@ -58,8 +66,7 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
         string address,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(address))
-            throw new ArgumentException("Address cannot be null or whitespace.", nameof(address));
+        address.EnsureValidWalletAddress(nameof(address));
 
         return await DbSet
             .AsNoTracking()
@@ -73,19 +80,31 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
         string address,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(address))
-            throw new ArgumentException("Address cannot be null or whitespace.", nameof(address));
+        address.EnsureValidWalletAddress(nameof(address));
 
         return await DbSet
             .AsNoTracking()
             .AnyAsync(w => w.Address == address, cancellationToken);
     }
-
-    /// <summary>
-    /// Get wallet by ID with included user and cryptocurrency details
-    /// </summary>
-    public override async Task<Wallet?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    
+    /// <inheritdoc />
+    public async Task<Wallet?> GetByAddressAsync(
+        string address,
+        CancellationToken cancellationToken = default)
     {
+        address.EnsureValidWalletAddress(nameof(address));
+
+        return await DbSet
+            .AsNoTracking()
+            .FirstOrDefaultAsync(w => w.Address == address, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<Wallet?> GetByIdWithDetailsAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+            throw new ArgumentException("ID cannot be empty.", nameof(id));
+            
         return await DbSet
             .AsNoTracking()
             .Include(w => w.User)
@@ -93,14 +112,48 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
             .FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Get all wallets with included details
-    /// </summary>
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Wallet>> GetUserWalletsByIdWithDetailsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+
+        return await DbSet
+            .AsNoTracking()
+            .Include(w => w.Cryptocurrency)
+            .Where(w => w.UserId == userId)
+            .OrderBy(w => w.Cryptocurrency.Code)
+            .ToListAsync(cancellationToken);
+    }
+    
+    /// <inheritdoc />
+    public async Task<Wallet?> GetUserWalletByCurrencyWithDetailsAsync(
+        Guid userId,
+        string currencyCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+            
+        if (string.IsNullOrWhiteSpace(currencyCode))
+            throw new ArgumentException("Currency code cannot be empty.", nameof(currencyCode));
+
+        return await DbSet
+            .AsNoTracking()
+            .Include(w => w.Cryptocurrency)
+            .FirstOrDefaultAsync(
+                w => w.UserId == userId && 
+                     w.Cryptocurrency.Code == currencyCode.ToUpper(),
+                cancellationToken);
+    }
+
+    /// <inheritdoc />
     public override IQueryable<Wallet> GetAll()
     {
         return base.GetAll()
             .Include(w => w.User)
-            .Include(w => w.Cryptocurrency)
-            .AsQueryable();
+            .Include(w => w.Cryptocurrency);
     }
 }

@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using Ardalis.GuardClauses;
 using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Currencies;
+using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 
 namespace CryptoWallet.Domain.Wallets;
@@ -63,6 +65,18 @@ public class Wallet : AuditableEntity
         Address = Guard.Against.NullOrWhiteSpace(address, nameof(address));
         Balance = 0;
         IsActive = true;
+        
+        // Initialize the collections to avoid null reference exceptions
+        // The actual Wallet instances will be added by EF Core when loading from the database
+        if (cryptocurrency.Wallets == null)
+        {
+            cryptocurrency.GetType().GetProperty("Wallets")?.SetValue(cryptocurrency, new List<Wallet>());
+        }
+        
+        if (user.Wallets == null)
+        {
+            user.GetType().GetProperty("Wallets")?.SetValue(user, new List<Wallet>());
+        }
     }
 
     /// <summary>
@@ -131,6 +145,12 @@ public class Wallet : AuditableEntity
         IsActive = false;
         UpdateAuditFields(modifiedBy);
     }
+
+    /// <summary>
+    /// Collection of transactions associated with this wallet
+    /// </summary>
+    private readonly List<Transaction> _transactions = new();
+    public virtual IReadOnlyCollection<Transaction> Transactions => _transactions.AsReadOnly();
 
     /// <summary>
     /// Checks if the wallet has sufficient funds for a given amount

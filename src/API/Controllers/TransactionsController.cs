@@ -4,8 +4,8 @@ using Ardalis.Result;
 using AutoMapper;
 using CryptoWallet.API.Models;
 using CryptoWallet.API.Models.Transactions;
+using CryptoWallet.Application.Common.Models;
 using CryptoWallet.Application.Transactions;
-using CryptoWallet.Application.Transactions.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -47,7 +47,7 @@ public class TransactionsController : ApiControllerBase
     /// <param name="cancellationToken">Токен отмены операции</param>
     /// <returns>Информация о транзакции</returns>
     [HttpGet("{id:guid}", Name = nameof(GetTransactionById))]
-    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<TransactionDto>))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<Application.Transactions.Dtos.TransactionDto>))]
     [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse<object>))]
     public async Task<IActionResult> GetTransactionById(
         [FromRoute] Guid id,
@@ -69,24 +69,27 @@ public class TransactionsController : ApiControllerBase
     /// <param name="cancellationToken">Токен отмены операции</param>
     /// <returns>Страница с отфильтрованными транзакциями</returns>
     [HttpGet(Name = nameof(GetTransactions))]
-    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<PaginatedList<TransactionDto>>))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<PaginatedList<Application.Transactions.Dtos.TransactionDto>>))]
     public async Task<IActionResult> GetTransactions(
         [FromQuery] GetTransactionsQueryDto query,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение списка транзакций с параметрами: {Query}", query);
         
-        // Применяем фильтры
-        var result = await _transactionService.GetTransactionsAsync(
+        // Apply filters using GetTransactionsByDateRangeAsync
+        var startDate = query.StartDate ?? DateTimeOffset.UtcNow.AddDays(-30); // Default to last 30 days if not specified
+        var endDate = query.EndDate ?? DateTimeOffset.UtcNow;
+        
+        var result = await _transactionService.GetTransactionsByDateRangeAsync(
+            startDate: startDate,
+            endDate: endDate,
+            pageNumber: query.PageNumber,
+            pageSize: query.PageSize,
             walletAddress: query.WalletAddress,
             status: query.Status,
             type: query.Type,
             minAmount: query.MinAmount,
             maxAmount: query.MaxAmount,
-            startDate: query.StartDate,
-            endDate: query.EndDate,
-            pageNumber: query.PageNumber,
-            pageSize: query.PageSize,
             cancellationToken: cancellationToken);
         
         return HandleResult(
@@ -102,7 +105,7 @@ public class TransactionsController : ApiControllerBase
     /// <param name="cancellationToken">Токен отмены операции</param>
     /// <returns>Обновленная информация о транзакции</returns>
     [HttpPatch("{id:guid}/status", Name = nameof(UpdateTransactionStatus))]
-    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<TransactionDto>))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<Application.Transactions.Dtos.TransactionDto>))]
     [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<object>))]
     [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse<object>))]
     public async Task<IActionResult> UpdateTransactionStatus(
@@ -132,8 +135,8 @@ public class TransactionsController : ApiControllerBase
     /// <param name="cancellationToken">Токен отмены операции</param>
     /// <returns>Страница с транзакциями кошелька</returns>
     [HttpGet("wallet/{walletAddress}", Name = nameof(GetWalletTransactions))]
-    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<PaginatedList<TransactionDto>>))]
-    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<object>))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<PaginatedList<Application.Transactions.Dtos.TransactionDto>>))]
+    [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse<object>))]
     public async Task<IActionResult> GetWalletTransactions(
         [FromRoute, Required] string walletAddress,
         [FromQuery, Range(1, int.MaxValue)] int pageNumber = 1,

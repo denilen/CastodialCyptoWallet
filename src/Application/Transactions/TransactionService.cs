@@ -1,18 +1,13 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Ardalis.Result;
 using AutoMapper;
 using AutoMapper.QueryableExtensions;
-using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Common.Models;
 using CryptoWallet.Application.Common.Services;
+using CryptoWallet.Application.Common.Validators;
 using CryptoWallet.Application.Transactions.Dtos;
-using CryptoWallet.Domain.Transactions;
+using CryptoWallet.Domain.Enums;
+using CryptoWallet.Domain.Interfaces.Repositories;
 using CryptoWallet.Domain.Users;
-using CryptoWallet.Domain.Wallets;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -55,11 +50,11 @@ public class TransactionService : BaseService, ITransactionService
             if (transaction == null)
             {
                 _logger.LogWarning("Transaction with ID {TransactionId} not found", transactionId);
-                return Result.NotFound($"Transaction with ID '{transactionId}' not found.");
+                return Result.NotFound("Transaction not found.");
             }
 
             var result = _mapper.Map<TransactionDto>(transaction);
-            return Result.Success(result);
+            return new Result<TransactionDto>(result);
         }
         catch (Exception ex)
         {
@@ -97,7 +92,7 @@ public class TransactionService : BaseService, ITransactionService
             if (wallet == null)
             {
                 _logger.LogWarning("Wallet with address {WalletAddress} not found", walletAddress);
-                return Result.NotFound($"Wallet with address '{walletAddress}' not found.");
+                return Result.NotFound("Wallet not found.");
             }
 
             if (!wallet.IsActive)
@@ -115,7 +110,8 @@ public class TransactionService : BaseService, ITransactionService
             if (transactionCount == 0)
             {
                 _logger.LogInformation("No transactions found for wallet: {WalletAddress}", walletAddress);
-                return Result.Success(new PaginatedList<TransactionDto>([], 0, pageNumber, pageSize));
+                return new Result<PaginatedList<TransactionDto>>(
+                    new PaginatedList<TransactionDto>(new List<TransactionDto>(), 0, pageNumber, pageSize));
             }
 
             var transactions = await PaginatedList<TransactionDto>.CreateAsync(
@@ -124,10 +120,10 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
-            _logger.LogInformation("Successfully retrieved {Count} transactions for wallet: {WalletAddress}", 
+            _logger.LogInformation("Successfully retrieved {Count} transactions for wallet: {WalletAddress}",
                 transactions.Items.Count, walletAddress);
 
-            return Result.Success(transactions);
+            return new Result<PaginatedList<TransactionDto>>(transactions);
         }
         catch (Exception ex)
         {
@@ -158,12 +154,12 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
-            return Result.Success(transactions);
+            return new Result<PaginatedList<TransactionDto>>(transactions);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while fetching transactions for user ID: {UserId}", user.Id);
-            return Result.Error($"An error occurred while fetching transactions for user ID '{user.Id}'.");
+            return Result.Error("An error occurred while fetching transactions.");
         }
     }
 
@@ -181,10 +177,11 @@ public class TransactionService : BaseService, ITransactionService
             if (string.IsNullOrWhiteSpace(status))
                 return Result.Error("Status cannot be empty.");
 
-            var normalizedStatus = status.Trim().ToLowerInvariant();
+            if (!Enum.TryParse<TransactionStatusEnum>(status, true, out var statusEnum))
+                return Result.Error($"Invalid status value: {status}");
 
             var query = _transactionRepository.GetAll()
-                .Where(t => t.Status.ToLower() == normalizedStatus)
+                .Where(t => t.StatusEnum == statusEnum)
                 .OrderByDescending(t => t.CreatedAt);
 
             var transactions = await PaginatedList<TransactionDto>.CreateAsync(
@@ -193,7 +190,7 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
-            return Result.Success(transactions);
+            return new Result<PaginatedList<TransactionDto>>(transactions);
         }
         catch (Exception ex)
         {
@@ -219,7 +216,7 @@ public class TransactionService : BaseService, ITransactionService
             var normalizedType = type.Trim().ToLowerInvariant();
 
             var query = _transactionRepository.GetAll()
-                .Where(t => t.Type.ToLower() == normalizedType)
+                .Where(t => t.TypeEnum.ToString().ToLower() == normalizedType)
                 .OrderByDescending(t => t.CreatedAt);
 
             var transactions = await PaginatedList<TransactionDto>.CreateAsync(
@@ -228,7 +225,7 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
-            return Result.Success(transactions);
+            return new Result<PaginatedList<TransactionDto>>(transactions);
         }
         catch (Exception ex)
         {
@@ -258,6 +255,27 @@ public class TransactionService : BaseService, ITransactionService
             if (startDate > endDate)
                 return Result.Error("Start date cannot be after end date.");
 
+            if (pageNumber < 1)
+                return Result.Error("Page number must be greater than 0.");
+
+            if (pageSize < 1 || pageSize > 100)
+                return Result.Error("Page size must be between 1 and 100.");
+
+            if (!string.IsNullOrWhiteSpace(walletAddress) && !IsValidWalletAddress(walletAddress))
+                return Result.Error("Invalid wallet address format.");
+
+            if (!string.IsNullOrWhiteSpace(status) && !IsValidTransactionStatus(status))
+                return Result.Error($"Invalid status: {status}");
+
+            if (!string.IsNullOrWhiteSpace(type) && !IsValidTransactionType(type))
+                return Result.Error($"Invalid transaction type: {type}");
+
+            if (minAmount < 0 || maxAmount < 0)
+                return Result.Error("Amount cannot be negative.");
+
+            if (minAmount > maxAmount)
+                return Result.Error("Minimum amount cannot be greater than maximum amount.");
+
             var maxDateRangeInDays = 365; // 1 year
             if ((endDate - startDate).TotalDays > maxDateRangeInDays)
                 return Result.Error($"Date range cannot exceed {maxDateRangeInDays} days.");
@@ -283,20 +301,20 @@ public class TransactionService : BaseService, ITransactionService
             {
                 if (!IsValidWalletAddress(walletAddress))
                     return Result.Error("Invalid wallet address format.");
-                
+
                 query = query.Where(t => t.Wallet.Address == walletAddress);
             }
 
             if (!string.IsNullOrWhiteSpace(status))
             {
                 var normalizedStatus = status.Trim().ToLowerInvariant();
-                query = query.Where(t => t.Status.ToLower() == normalizedStatus);
+                query = query.Where(t => t.StatusEnum.ToString().ToLower() == normalizedStatus);
             }
 
             if (!string.IsNullOrWhiteSpace(type))
             {
                 var normalizedType = type.Trim().ToLowerInvariant();
-                query = query.Where(t => t.Type.ToLower() == normalizedType);
+                query = query.Where(t => t.TypeEnum.ToString().ToLower() == normalizedType);
             }
 
             if (minAmount.HasValue && minAmount > 0)
@@ -308,7 +326,7 @@ public class TransactionService : BaseService, ITransactionService
             {
                 if (minAmount.HasValue && maxAmount < minAmount)
                     return Result.Error("Maximum amount cannot be less than minimum amount.");
-                    
+
                 query = query.Where(t => t.Amount <= maxAmount.Value);
             }
 
@@ -319,7 +337,8 @@ public class TransactionService : BaseService, ITransactionService
             if (transactionCount == 0)
             {
                 _logger.LogInformation("No transactions found for the specified criteria");
-                return Result.Success(new PaginatedList<TransactionDto>([], 0, pageNumber, pageSize));
+                return new Result<PaginatedList<TransactionDto>>(
+                    new PaginatedList<TransactionDto>(new List<TransactionDto>(), 0, pageNumber, pageSize));
             }
 
             var transactions = await PaginatedList<TransactionDto>.CreateAsync(
@@ -328,10 +347,10 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
-            _logger.LogInformation("Successfully retrieved {Count} transactions for the specified criteria", 
+            _logger.LogInformation("Successfully retrieved {Count} transactions for the specified criteria",
                 transactions.Items.Count);
 
-            return Result.Success(transactions);
+            return new Result<PaginatedList<TransactionDto>>(transactions);
         }
         catch (Exception ex)
         {
@@ -348,70 +367,120 @@ public class TransactionService : BaseService, ITransactionService
         string? notes = null,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(status))
+            return Result.Error("Status cannot be empty.");
+
+        if (transactionId == Guid.Empty)
+            return Result.Error("Transaction ID cannot be empty.");
+
         try
         {
             _logger.LogInformation("Updating status of transaction {TransactionId} to {Status}", transactionId, status);
 
-            if (string.IsNullOrWhiteSpace(status))
-                return Result.Error("Status cannot be empty.");
-
             var transaction = await _transactionRepository.GetByIdAsync(transactionId, cancellationToken);
             if (transaction == null)
+                return Result.NotFound("Transaction not found.");
+
+            if (_transactionRepository == null)
             {
-                _logger.LogWarning("Transaction with ID {TransactionId} not found", transactionId);
-                return Result.NotFound($"Transaction with ID '{transactionId}' not found.");
+                _logger.LogError("Transaction repository is not initialized");
+                return Result.Error("Internal server error: Transaction service is not properly initialized.");
             }
 
             // Validate status transition
-            if (!IsValidStatusTransition(transaction.StatusEnum, status))
-            {
-                _logger.LogWarning(
-                    "Invalid status transition from {OldStatus} to {NewStatus} for transaction {TransactionId}",
-                    transaction.StatusEnum, status, transactionId);
-                return Result.Error($"Cannot change status from '{transaction.StatusEnum}' to '{status}'.");
-            }
+            if (!IsValidStatusTransition(transaction.StatusEnum.ToString(), status))
+                return Result.Error($"Invalid status transition from {transaction.StatusEnum} to {status}");
 
             // Update transaction status
-            var previousStatus = transaction.StatusEnum;
-            transaction.UpdateStatus(status, notes);
+            var previousStatus = transaction.StatusEnum.ToString();
 
-            // If the transaction is now completed, update the confirmed timestamp
-            if (status.Equals("completed", StringComparison.OrdinalIgnoreCase))
+            // Use the appropriate status update method based on the new status
+            if (Enum.TryParse<TransactionStatusEnum>(status, true, out var newStatus))
             {
-                transaction.MarkAsCompleted();
+                switch (newStatus)
+                {
+                    case TransactionStatusEnum.Processing:
+                        transaction.MarkAsProcessing();
+                        break;
+                    case TransactionStatusEnum.Completed:
+                        transaction.MarkAsCompleted();
+                        break;
+                    case TransactionStatusEnum.Failed:
+                        transaction.MarkAsFailed(notes ?? "Transaction failed");
+                        break;
+                    case TransactionStatusEnum.Cancelled:
+                        transaction.MarkAsCancelled(notes);
+                        break;
+                    case TransactionStatusEnum.Rejected:
+                        transaction.MarkAsRejected(notes ?? "Transaction rejected");
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(status), $"Unsupported status: {status}");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Invalid status value: {Status}", status);
+                return Result.Error($"Invalid status value: {status}");
             }
 
-            await _transactionRepository.UpdateAsync(transaction);
-            await _transactionRepository.SaveChangesAsync();
+            // Save the changes
+            await _transactionRepository.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully updated status of transaction {TransactionId} from {OldStatus} to {NewStatus}",
                 transactionId, previousStatus, status);
 
-            var result = _mapper.Map<TransactionDto>(transaction);
-            return Result.Success(result);
+            // Reload the transaction with details to include related data
+            var updatedTransaction =
+                await _transactionRepository.GetByIdWithDetailsAsync(transactionId, cancellationToken);
+
+            if (updatedTransaction == null)
+            {
+                _logger.LogError("Failed to reload transaction {TransactionId} after status update", transactionId);
+                return Result.Error("Transaction was updated but could not be reloaded.");
+            }
+
+            if (_mapper == null)
+            {
+                _logger.LogError("AutoMapper is not initialized");
+                return Result.Error("Internal server error: Mapping service is not properly initialized.");
+            }
+
+            var result = _mapper.Map<TransactionDto>(updatedTransaction);
+            return new Result<TransactionDto>(result);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while updating status of transaction {TransactionId}", transactionId);
-            return Result.Error($"An error occurred while updating the status of transaction '{transactionId}'.");
+            return Result.Error("An error occurred while updating the transaction status.");
         }
     }
 
     #region Private Helper Methods
 
+    /// <summary>
+    /// Validates a cryptocurrency wallet address using the WalletAddressValidator
+    /// </summary>
+    /// <param name="address">The wallet address to validate</param>
+    /// <returns>True if the address is valid, false otherwise</returns>
     private bool IsValidWalletAddress(string address)
     {
         if (string.IsNullOrWhiteSpace(address))
+        {
+            _logger.LogWarning("Wallet address is null or empty");
             return false;
+        }
 
-        // Basic length check (adjust based on your cryptocurrency requirements)
-        if (address.Length < 26 || address.Length > 64)
-            return false;
+        // Use the WalletAddressValidator for consistent validation
+        bool isValid = address.IsValidWalletAddress();
 
-        // Check for valid characters (alphanumeric, but depends on the cryptocurrency)
-        // This is a simplified example - you should implement specific validation for each cryptocurrency
-        return System.Text.RegularExpressions.Regex.IsMatch(address, "^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^0x[a-fA-F0-9]{40}$");
+        if (!isValid)
+        {
+            _logger.LogWarning("Invalid wallet address format: {Address}", address);
+        }
+
+        return isValid;
     }
 
     private bool IsValidTransactionType(string type)
@@ -420,11 +489,11 @@ public class TransactionService : BaseService, ITransactionService
             return false;
 
         // Define valid transaction types
-        var validTypes = new[] 
-        { 
-            "deposit", 
-            "withdrawal", 
-            "transfer_in", 
+        var validTypes = new[]
+        {
+            "deposit",
+            "withdrawal",
+            "transfer_in",
             "transfer_out",
             "exchange"
         };
@@ -447,7 +516,8 @@ public class TransactionService : BaseService, ITransactionService
         if (!Enum.TryParse<TransactionStatusEnum>(currentStatus, true, out var currentStatusEnum) ||
             !Enum.TryParse<TransactionStatusEnum>(newStatus, true, out var newStatusEnum))
         {
-            _logger.LogWarning("Invalid status values: Current='{CurrentStatus}', New='{NewStatus}'", currentStatus, newStatus);
+            _logger.LogWarning("Invalid status values: Current='{CurrentStatus}', New='{NewStatus}'", currentStatus,
+                newStatus);
             return false;
         }
 
@@ -461,27 +531,27 @@ public class TransactionService : BaseService, ITransactionService
             // Pending can go to processing, completed, failed, or cancelled
             [TransactionStatusEnum.Pending] = new HashSet<TransactionStatusEnum>
             {
-                TransactionStatusEnum.Processing,  // Transaction is being processed
-                TransactionStatusEnum.Completed,   // Direct completion for simple transactions
-                TransactionStatusEnum.Failed,      // Transaction failed
-                TransactionStatusEnum.Cancelled    // User or system cancelled the transaction
+                TransactionStatusEnum.Processing, // Transaction is being processed
+                TransactionStatusEnum.Completed,  // Direct completion for simple transactions
+                TransactionStatusEnum.Failed,     // Transaction failed
+                TransactionStatusEnum.Cancelled   // User or system cancelled the transaction
             },
 
             // Processing can go to completed or failed
             [TransactionStatusEnum.Processing] = new HashSet<TransactionStatusEnum>
             {
-                TransactionStatusEnum.Completed,   // Successfully processed
-                TransactionStatusEnum.Failed,      // Processing failed
-                TransactionStatusEnum.Cancelled    // User or system cancelled during processing
+                TransactionStatusEnum.Completed, // Successfully processed
+                TransactionStatusEnum.Failed,    // Processing failed
+                TransactionStatusEnum.Cancelled  // User or system cancelled during processing
             },
 
             // Completed is a terminal state (no further transitions allowed)
             [TransactionStatusEnum.Completed] = new HashSet<TransactionStatusEnum>(),
-            
+
             // Failed can be retried (goes back to pending)
             [TransactionStatusEnum.Failed] = new HashSet<TransactionStatusEnum>
             {
-                TransactionStatusEnum.Pending      // Allow retrying failed transactions
+                TransactionStatusEnum.Pending // Allow retrying failed transactions
             },
 
             // Cancelled is a terminal state (no further transitions allowed)
@@ -492,22 +562,22 @@ public class TransactionService : BaseService, ITransactionService
         if (!validTransitions.ContainsKey(currentStatusEnum))
         {
             _logger.LogWarning("Unknown current status '{CurrentStatus}' during status transition validation. " +
-                             "Allowing transition to '{NewStatus}' but this should be reviewed.", 
-                             currentStatus, newStatus);
+                               "Allowing transition to '{NewStatus}' but this should be reviewed.",
+                currentStatus, newStatus);
             return true;
         }
 
         // Check if the transition is valid
         var allowedTransitions = validTransitions[currentStatusEnum];
         var isValid = allowedTransitions.Contains(newStatusEnum);
-        
+
         if (!isValid)
         {
             _logger.LogWarning("Invalid status transition from '{CurrentStatus}' to '{NewStatus}'. " +
-                            "Allowed transitions: {AllowedTransitions}",
-                            currentStatusEnum, 
-                            newStatusEnum, 
-                            string.Join(", ", allowedTransitions));
+                               "Allowed transitions: {AllowedTransitions}",
+                currentStatusEnum,
+                newStatusEnum,
+                string.Join(", ", allowedTransitions));
         }
 
         return isValid;

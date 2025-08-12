@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using Ardalis.GuardClauses;
 using CryptoWallet.Domain.Common;
+using CryptoWallet.Domain.Wallets;
 
 namespace CryptoWallet.Domain.Currencies;
 
@@ -27,6 +29,12 @@ public class Cryptocurrency : AuditableEntity
     /// Indicates whether the currency is active for use
     /// </summary>
     public bool IsActive { get; private set; }
+
+    /// <summary>
+    /// Collection of wallets that hold this cryptocurrency
+    /// </summary>
+    private readonly List<Wallet> _wallets = new();
+    public virtual IReadOnlyCollection<Wallet> Wallets => _wallets.AsReadOnly();
 
     // Private constructor for EF Core
     private Cryptocurrency()

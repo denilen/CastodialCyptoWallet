@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace CryptoWallet.Application.Wallets.Dtos;
+namespace CryptoWallet.Domain.Models.DTOs.Wallets;
 
 /// <summary>
 /// Request DTO for depositing funds into a wallet
@@ -19,6 +19,12 @@ public class DepositRequest
     /// </summary>
     [Range(1, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
     public decimal Amount { get; set; }
+
+    /// <summary>
+    /// The transaction fee (in the smallest unit of the cryptocurrency)
+    /// </summary>
+    [Range(0, double.MaxValue, ErrorMessage = "Fee cannot be negative")]
+    public decimal Fee { get; set; }
 
     /// <summary>
     /// The transaction hash from the blockchain (if applicable)

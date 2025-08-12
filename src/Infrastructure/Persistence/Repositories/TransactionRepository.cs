@@ -1,5 +1,6 @@
 using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Enums;
+using CryptoWallet.Domain.Interfaces.Repositories;
 using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
@@ -27,17 +28,20 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
     {
         if (wallet == null)
             throw new ArgumentNullException(nameof(wallet));
+        if (wallet.Id == Guid.Empty)
+            throw new ArgumentException("Wallet ID cannot be empty.", nameof(wallet));
 
         if (pageNumber < 1)
             throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number must be greater than 0.");
-
         if (pageSize < 1)
             throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0.");
+        if (pageSize > 100)
+            throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size cannot exceed 100.");
 
         var query = DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-            .ThenInclude(w => w.Cryptocurrency)
+                .ThenInclude(w => w.Cryptocurrency)
             .Where(t => t.WalletId == wallet.Id)
             .OrderByDescending(t => t.CreatedAt);
 
@@ -53,17 +57,20 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
     {
         if (user == null)
             throw new ArgumentNullException(nameof(user));
+        if (user.Id == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(user));
 
         if (pageNumber < 1)
             throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number must be greater than 0.");
-
         if (pageSize < 1)
             throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0.");
+        if (pageSize > 100)
+            throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size cannot exceed 100.");
 
         var query = DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-            .ThenInclude(w => w.Cryptocurrency)
+                .ThenInclude(w => w.Cryptocurrency)
             .Where(t => t.Wallet.UserId == user.Id)
             .OrderByDescending(t => t.CreatedAt);
 
@@ -92,6 +99,8 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
     {
         if (string.IsNullOrWhiteSpace(transactionHash))
             throw new ArgumentException("Transaction hash cannot be null or whitespace.", nameof(transactionHash));
+        if (transactionHash.Length > 128) // Adjust max length as needed
+            throw new ArgumentException("Transaction hash is too long.", nameof(transactionHash));
 
         return await DbSet
             .AsNoTracking()
@@ -100,22 +109,26 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
 
     /// <inheritdoc />
     public async Task<PaginatedList<Transaction>> GetByStatusAsync(
-        TransactionStatusEnum statusEnum,
+        TransactionStatusEnum status,
         int pageNumber = 1,
         int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
+        if (!Enum.IsDefined(typeof(TransactionStatusEnum), status))
+            throw new ArgumentException("Invalid transaction status value.", nameof(status));
+            
         if (pageNumber < 1)
             throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number must be greater than 0.");
-
         if (pageSize < 1)
             throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than 0.");
+        if (pageSize > 100)
+            throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size cannot exceed 100.");
 
         var query = DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-            .ThenInclude(w => w.Cryptocurrency)
-            .Where(t => t.StatusEnum == statusEnum)
+                .ThenInclude(w => w.Cryptocurrency)
+            .Where(t => t.StatusEnum == status)
             .OrderBy(t => t.CreatedAt);
 
         return await PaginatedList<Transaction>.CreateAsync(query, pageNumber, pageSize, cancellationToken);
@@ -143,5 +156,48 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
             .Include(t => t.Wallet)
             .ThenInclude(w => w.User)
             .AsQueryable();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Transaction>> GetPendingWithdrawalsAsync(
+        Guid walletId,
+        CancellationToken cancellationToken = default)
+    {
+        if (walletId == Guid.Empty)
+            throw new ArgumentException("Wallet ID cannot be empty.", nameof(walletId));
+
+        return await DbSet
+            .AsNoTracking()
+            .Include(t => t.Wallet)
+                .ThenInclude(w => w.Cryptocurrency)
+            .Where(t => t.WalletId == walletId &&
+                        t.TypeEnum == TransactionTypeEnum.Withdrawal &&
+                        t.StatusEnum == TransactionStatusEnum.Pending)
+            .OrderBy(t => t.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<decimal> GetTotalWithdrawnAmountAsync(
+        Guid userId,
+        Guid cryptocurrencyId,
+        DateTimeOffset fromDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (cryptocurrencyId == Guid.Empty)
+            throw new ArgumentException("Cryptocurrency ID cannot be empty.", nameof(cryptocurrencyId));
+        if (fromDate > DateTimeOffset.UtcNow)
+            throw new ArgumentException("From date cannot be in the future.", nameof(fromDate));
+
+        return await DbSet
+            .AsNoTracking()
+            .Where(t => t.Wallet.UserId == userId &&
+                        t.Wallet.CryptocurrencyId == cryptocurrencyId &&
+                        t.TypeEnum == TransactionTypeEnum.Withdrawal &&
+                        t.StatusEnum == TransactionStatusEnum.Completed &&
+                        t.CreatedAt >= fromDate)
+            .SumAsync(t => t.Amount, cancellationToken);
     }
 }

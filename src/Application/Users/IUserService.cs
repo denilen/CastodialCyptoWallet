@@ -11,7 +11,7 @@ namespace CryptoWallet.Application.Users;
 public interface IUserService : IService
 {
     /// <summary>
-    /// Registers a new user and creates default wallets
+    /// Registers a new user
     /// </summary>
     /// <param name="request">User registration data</param>
     /// <param name="cancellationToken">Cancellation token</param>

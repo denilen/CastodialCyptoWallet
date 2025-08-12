@@ -1,3 +1,5 @@
+using System.Linq;
+using Ardalis.Result;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -38,7 +40,17 @@ public abstract class ApiControllerBase : ControllerBase
             return Ok(result.Value);
         }
 
-        return HandleErrorResult(result);
+        // Convert the generic Result<T> to a non-generic Result for error handling
+        var nonGenericResult = Result.Error(string.Join("; ", result.Errors));
+        if (result.ValidationErrors != null && result.ValidationErrors.Any())
+        {
+            var validationErrors = result.ValidationErrors
+                .Select(v => new ValidationError(v.ErrorMessage, v.Identifier, v.ErrorCode, Ardalis.Result.ValidationSeverity.Error))
+                .ToArray();
+            nonGenericResult = Result.Invalid(validationErrors);
+        }
+        
+        return HandleErrorResult(nonGenericResult);
     }
 
     /// <summary>

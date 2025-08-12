@@ -8,22 +8,22 @@ public abstract class AuditableEntity : Entity
     /// <summary>
     /// Date and time when the entity was created
     /// </summary>
-    public DateTimeOffset CreatedAt { get; protected set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
     /// Identifier of the user who created the entity
     /// </summary>
-    public string? CreatedBy { get; protected set; }
+    public string? CreatedBy { get; set; }
 
     /// <summary>
     /// Date and time when the entity was last modified
     /// </summary>
-    public DateTimeOffset? LastModifiedAt { get; protected set; }
+    public DateTimeOffset? LastModifiedAt { get; set; }
 
     /// <summary>
     /// Identifier of the user who last modified the entity
     /// </summary>
-    public string? LastModifiedBy { get; protected set; }
+    public string? LastModifiedBy { get; set; }
 
     protected AuditableEntity()
     {

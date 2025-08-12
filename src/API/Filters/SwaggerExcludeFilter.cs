@@ -3,6 +3,7 @@ using System.Linq;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text.Json.Serialization;
+using System.Reflection;
 
 namespace CryptoWallet.API.Filters;
 

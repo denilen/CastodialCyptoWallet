@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
+using CryptoWallet.Domain.Common;
 
-namespace CryptoWallet.Domain.Common;
+namespace CryptoWallet.Domain.Interfaces.Repositories;
 
 /// <summary>
 /// Base repository interface for data access operations
@@ -49,49 +50,53 @@ public interface IRepository<TEntity> where TEntity : Entity
     /// Updates an existing entity in the repository
     /// </summary>
     /// <param name="entity">The entity to update</param>
-    void Update(TEntity entity);
+    /// <param name="cancellationToken">A token to cancel the operation</param>
+    /// <returns>A task that represents the asynchronous operation</returns>
+    Task UpdateAsync(TEntity entity, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes an entity from the repository
     /// </summary>
     /// <param name="entity">The entity to remove</param>
-    void Remove(TEntity entity);
-
-    /// <summary>
-    /// Removes an entity by its unique identifier
-    /// </summary>
-    /// <param name="id">The unique identifier of the entity to remove</param>
     /// <param name="cancellationToken">A token to cancel the operation</param>
     /// <returns>A task that represents the asynchronous operation</returns>
-    Task RemoveAsync(Guid id, CancellationToken cancellationToken = default);
+    Task RemoveAsync(TEntity entity, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes a collection of entities from the repository
     /// </summary>
     /// <param name="entities">The collection of entities to remove</param>
-    void RemoveRange(IEnumerable<TEntity> entities);
+    /// <param name="cancellationToken">A token to cancel the operation</param>
+    /// <returns>A task that represents the asynchronous operation</returns>
+    Task RemoveRangeAsync(IEnumerable<TEntity> entities, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determines whether any entity matches the specified condition
+    /// Checks if any entity matches the specified predicate
     /// </summary>
     /// <param name="predicate">A function to test each element for a condition</param>
     /// <param name="cancellationToken">A token to cancel the operation</param>
     /// <returns>True if any element matches the condition; otherwise, false</returns>
-    Task<bool> ExistsAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
+    Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the number of entities that match the optional condition
+    /// Gets the number of entities in the repository
     /// </summary>
-    /// <param name="predicate">A function to test each element for a condition (optional)</param>
     /// <param name="cancellationToken">A token to cancel the operation</param>
-    /// <returns>The number of entities that match the condition, or the total count if no condition is provided</returns>
-    Task<int> CountAsync(Expression<Func<TEntity, bool>>? predicate = null,
-                         CancellationToken cancellationToken = default);
+    /// <returns>The number of entities</returns>
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Saves all changes made in this repository to the underlying data store
+    /// Gets the number of entities that match the specified predicate
+    /// </summary>
+    /// <param name="predicate">A function to test each element for a condition</param>
+    /// <param name="cancellationToken">A token to cancel the operation</param>
+    /// <returns>The number of entities that match the condition</returns>
+    Task<int> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves all changes made in this context to the database
     /// </summary>
     /// <param name="cancellationToken">A token to cancel the operation</param>
-    /// <returns>The number of state entries written to the database</returns>
+    /// <returns>A task that represents the asynchronous save operation. The task result contains the number of state entries written to the database.</returns>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -4,11 +4,12 @@ using Ardalis.Result;
 using CryptoWallet.API.Models;
 using CryptoWallet.API.Models.Wallets;
 using CryptoWallet.Application.Wallets;
-using CryptoWallet.Application.Wallets.Dtos;
+using CryptoWallet.Domain.Models.DTOs.Wallets;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 
 namespace CryptoWallet.API.Controllers;
 
@@ -167,31 +168,164 @@ public class WalletsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<TransactionDto>))]
     [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<object>))]
     public async Task<IActionResult> TransferFunds(
-        [FromBody] TransferRequestDto request,
+        [FromBody] TransferRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Перевод {Amount} с кошелька {Source} на кошелек {Destination}", 
-            request.Amount, request.SourceWalletAddress, request.DestinationWalletAddress);
+        _logger.LogInformation("Инициирован перевод средств с кошелька {SourceWallet} на кошелек {DestinationWallet} на сумму {Amount}",
+            request.SourceWalletAddress, request.DestinationWalletAddress, request.Amount);
         
-        // Получаем IP-адрес и User-Agent из контекста запроса
-        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
-        var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
+        // Получаем IP и User-Agent для аудита
+        request.IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        request.UserAgent = HttpContext.Request.Headers.UserAgent.ToString();
         
-        var transferRequest = new TransferRequest
-        {
-            SourceWalletAddress = request.SourceWalletAddress,
-            DestinationWalletAddress = request.DestinationWalletAddress,
-            Amount = request.Amount,
-            Fee = request.Fee,
-            Notes = request.Notes,
-            IpAddress = ipAddress,
-            UserAgent = userAgent
-        };
-        
-        var result = await _walletService.TransferFundsAsync(transferRequest, cancellationToken);
+        var result = await _walletService.TransferFundsAsync(request, cancellationToken);
         
         return HandleResult(
             result,
-            $"Успешно переведено {request.Amount} с кошелька {request.SourceWalletAddress} на кошелек {request.DestinationWalletAddress}");
+            $"Успешно инициирован перевод {request.Amount} с кошелька {request.SourceWalletAddress} на {request.DestinationWalletAddress}");
+    }
+    
+    /// <summary>
+    /// Получить все кошельки пользователя
+    /// </summary>
+    /// <param name="userId">Идентификатор пользователя</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Список кошельков пользователя</returns>
+    [HttpGet("user/{userId:guid}", Name = nameof(GetUserWallets))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<IReadOnlyList<WalletDto>>))]
+    [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse<object>))]
+    public async Task<IActionResult> GetUserWallets(
+        [FromRoute] Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Получение всех кошельков пользователя с ID: {UserId}", userId);
+        
+        var result = await _walletService.GetUserWalletsByIdAsync(userId, cancellationToken);
+        
+        return HandleResult(
+            result,
+            $"Успешно получены кошельки пользователя с ID: {userId}");
+    }
+    
+    /// <summary>
+    /// Получить балансы по всем валютам пользователя
+    /// </summary>
+    /// <param name="userId">Идентификатор пользователя</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Словарь с балансами по валютам</returns>
+    [HttpGet("user/{userId:guid}/balance", Name = nameof(GetUserBalances))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<Dictionary<string, decimal>>))]
+    [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse<object>))]
+    public async Task<IActionResult> GetUserBalances(
+        [FromRoute] Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Получение балансов по всем валютам пользователя с ID: {UserId}", userId);
+        
+        var result = await _walletService.GetUserBalancesAsync(userId, cancellationToken);
+        
+        return HandleResult(
+            result,
+            $"Успешно получены балансы пользователя с ID: {userId}");
+    }
+    
+    /// <summary>
+    /// Получить баланс пользователя по коду валюты
+    /// </summary>
+    /// <param name="userId">Идентификатор пользователя</param>
+    /// <param name="currency">Код валюты (например, "BTC", "ETH")</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Баланс пользователя в указанной валюте</returns>
+    [HttpGet("user/{userId:guid}/balance/{currency}", Name = nameof(GetUserBalanceByCurrency))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<decimal>))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<object>))]
+    [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse<object>))]
+    public async Task<IActionResult> GetUserBalanceByCurrency(
+        [FromRoute] Guid userId,
+        [FromRoute] string currency,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Получение баланса пользователя {UserId} по валюте {Currency}", userId, currency);
+        
+        // First get the wallet to check if it exists and get the balance
+        var walletResult = await _walletService.GetUserWalletByCurrencyAsync(userId, currency, cancellationToken);
+        if (!walletResult.IsSuccess)
+        {
+            return HandleResult(Result<decimal>.Error(walletResult.Errors.FirstOrDefault() ?? "Wallet not found"));
+        }
+        
+        return HandleResult(
+            Result.Success(walletResult.Value.Balance),
+            $"Успешно получен баланс пользователя {userId} в валюте {currency}");
+    }
+    
+    /// <summary>
+    /// Пополнить баланс пользователя
+    /// </summary>
+    /// <param name="userId">Идентификатор пользователя</param>
+    /// <param name="request">Данные для пополнения</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Информация о созданной транзакции</returns>
+    [HttpPost("user/{userId:guid}/deposit", Name = nameof(DepositToUserWallet))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<TransactionDto>))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<object>))]
+    public async Task<IActionResult> DepositToUserWallet(
+        [FromRoute] Guid userId,
+        [FromBody] DepositToUserWalletRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Пополнение баланса пользователя {UserId} на сумму {Amount} {Currency}",
+            userId, request.Amount, request.Currency);
+        
+        // Получаем IP и User-Agent для аудита
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
+        
+        var result = await _walletService.DepositToUserWalletAsync(
+            userId: userId,
+            currencyCode: request.Currency,
+            amount: request.Amount,
+            transactionHash: request.TransactionHash,
+            cancellationToken: cancellationToken
+        );
+        
+        return HandleResult(
+            result,
+            $"Успешно пополнен баланс пользователя {userId} на сумму {request.Amount} {request.Currency}");
+    }
+    
+    /// <summary>
+    /// Вывести средства с кошелька пользователя
+    /// </summary>
+    /// <param name="userId">Идентификатор пользователя</param>
+    /// <param name="request">Данные для вывода</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Информация о созданной транзакции</returns>
+    [HttpPost("user/{userId:guid}/withdraw", Name = nameof(WithdrawFromUserWallet))]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<TransactionDto>))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<object>))]
+    public async Task<IActionResult> WithdrawFromUserWallet(
+        [FromRoute] Guid userId,
+        [FromBody] WithdrawFromUserWalletRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Вывод средств пользователя {UserId} на сумму {Amount} {Currency} на адрес {DestinationAddress}",
+            userId, request.Amount, request.Currency, request.DestinationAddress);
+        
+        // Получаем IP и User-Agent для аудита
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
+        
+        var result = await _walletService.WithdrawFromUserWalletAsync(
+            userId: userId,
+            currencyCode: request.Currency,
+            amount: request.Amount,
+            destinationAddress: request.DestinationAddress,
+            cancellationToken: cancellationToken
+        );
+        
+        return HandleResult(
+            result,
+            $"Успешно инициирован вывод {request.Amount} {request.Currency} пользователя {userId} на адрес {request.DestinationAddress}");
     }
 }

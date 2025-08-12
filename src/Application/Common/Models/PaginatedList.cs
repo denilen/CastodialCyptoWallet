@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Microsoft.EntityFrameworkCore;
 
 namespace CryptoWallet.Application.Common.Models;
 

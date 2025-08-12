@@ -23,10 +23,16 @@ public class RegisterUserRequest
     public string Password { get; set; } = string.Empty;
 
     /// <summary>
-    /// User's full name
+    /// User's first name
     /// </summary>
-    [StringLength(100, ErrorMessage = "Name cannot be longer than 100 characters")]
-    public string? Name { get; set; }
+    [StringLength(50, ErrorMessage = "First name cannot be longer than 50 characters")]
+    public string? FirstName { get; set; }
+
+    /// <summary>
+    /// User's last name
+    /// </summary>
+    [StringLength(50, ErrorMessage = "Last name cannot be longer than 50 characters")]
+    public string? LastName { get; set; }
 
     /// <summary>
     /// User's phone number (optional)

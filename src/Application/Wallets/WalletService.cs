@@ -2,9 +2,11 @@ using Ardalis.Result;
 using AutoMapper;
 using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Common.Services;
-using CryptoWallet.Application.Wallets.Dtos;
+using CryptoWallet.Application.Common.Validators;
 using CryptoWallet.Domain.Currencies;
 using CryptoWallet.Domain.Enums;
+using CryptoWallet.Domain.Interfaces.Repositories;
+using CryptoWallet.Domain.Models.DTOs.Wallets;
 using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
@@ -191,16 +193,19 @@ public class WalletService : BaseService, IWalletService
 
             try
             {
+                // Get the fee from the request
+                decimal fee = request.Fee;
+                
                 // Create deposit transaction
                 var depositTransaction = new Transaction(
                     wallet,
                     TransactionTypeEnum.Deposit,
                     request.Amount,
-                    request.Fee ?? 0,
+                    fee,
                     wallet.Cryptocurrency.Code,
-                    request.SourceAddress,
                     request.WalletAddress,
-                    request.Notes ?? $"Deposit from {request.SourceAddress}");
+                    request.TransactionHash,
+                    request.Notes ?? $"Deposit to {request.WalletAddress}");
 
                 // Mark transaction as processing
                 depositTransaction.MarkAsProcessing();
@@ -216,20 +221,15 @@ public class WalletService : BaseService, IWalletService
                     return Result.Error("Failed to update wallet balance.");
                 }
 
-                // Process deposit in a transaction scope
-                using var dbContextTransaction = await _transactionRepository.BeginTransactionAsync();
                 try
                 {
-                    // Add transaction to repository and update wallet
-                    await _walletRepository.UpdateAsync(wallet);
-                    await _transactionRepository.AddAsync(depositTransaction);
-                    
-                    // Commit the transaction
-                    await dbContextTransaction.CommitAsync();
+                    // Save changes in a transaction
+                    await _transactionRepository.AddAsync(depositTransaction, cancellationToken);
+                    await _walletRepository.SaveChangesAsync(cancellationToken);
 
                     // Mark transaction as completed
                     depositTransaction.MarkAsCompleted();
-                    await _transactionRepository.SaveChangesAsync();
+                    await _transactionRepository.SaveChangesAsync(cancellationToken);
 
                     _logger.LogInformation(
                         "Successfully deposited {Amount} {Currency} to wallet {WalletAddress}",
@@ -241,7 +241,6 @@ public class WalletService : BaseService, IWalletService
                 }
                 catch (Exception ex)
                 {
-                    await dbContextTransaction.RollbackAsync();
                     _logger.LogError(ex, "Failed to process deposit to wallet {WalletAddress}", request.WalletAddress);
                     return Result.Error($"Failed to process deposit: {ex.Message}");
                 }
@@ -252,12 +251,11 @@ public class WalletService : BaseService, IWalletService
                 return Result.Error($"An error occurred while processing the deposit: {ex.Message}");
             }
 
-            return Result.Success(_mapper.Map<TransactionDto>(depositTransaction));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while depositing to wallet {WalletAddress}", request.WalletAddress);
-            return Result.Error($"An error occurred while processing the deposit to wallet '{request.WalletAddress}'.");
+            return Result.Error($"An error occurred while processing the deposit to wallet '{request.WalletAddress}': {ex.Message}");
         }
     }
 
@@ -284,30 +282,32 @@ public class WalletService : BaseService, IWalletService
             }
 
             // Check if wallet has sufficient balance (including fee)
-            var balanceResult = await GetWalletBalanceAsync(request.WalletAddress, cancellationToken);
+            var balanceResult = await GetWalletBalanceAsync(request.SourceWalletAddress, cancellationToken);
             if (!balanceResult.IsSuccess)
-                return balanceResult;
+                return Result<TransactionDto>.Error(string.Join("; ", balanceResult.Errors));
 
             var availableBalance = balanceResult.Value.AvailableBalance;
             
-            // Check daily withdrawal limit if applicable
-            if (wallet != null)
-            {
-                var maxDailyWithdrawal = 10000m; // Example: 10,000 USD equivalent
-                var dailyWithdrawals = await _transactionRepository.GetDailyWithdrawalAmountAsync(
-                    wallet.Id, 
-                    DateTimeOffset.UtcNow.AddDays(-1), 
-                    cancellationToken);
+            // Check daily withdrawal limit
+            var maxDailyWithdrawal = 10000m; // Example: 10,000 USD equivalent
+            var dailyWithdrawals = await _transactionRepository.GetTotalWithdrawnAmountAsync(
+                wallet.UserId,
+                wallet.CryptocurrencyId,
+                DateTimeOffset.UtcNow.AddDays(-1),
+                cancellationToken);
 
-                if (dailyWithdrawals + request.Amount > maxDailyWithdrawal)
-                    return Result.Error($"Daily withdrawal limit of {maxDailyWithdrawal} {wallet.Cryptocurrency.Code} exceeded.");
+            if (dailyWithdrawals + request.Amount > maxDailyWithdrawal)
+            {
+                var currencyCode = wallet.Cryptocurrency?.Code ?? "crypto";
+                return Result.Error($"Daily withdrawal limit of {maxDailyWithdrawal} {currencyCode} exceeded.");
             }
 
             // Validate fee
-            if (request.Fee < 0)
+            decimal fee = request.Fee ?? 0m;
+            if (fee < 0)
                 return Result.Error("Fee cannot be negative.");
 
-            if (availableBalance < request.Amount + (request.Fee ?? 0))
+            if (availableBalance < request.Amount + fee)
                 return Result.Error("Insufficient balance to complete the withdrawal.");
 
             // Validate IP address and user agent for security
@@ -318,11 +318,17 @@ public class WalletService : BaseService, IWalletService
                 return Result.Error("User-Agent header is required for security reasons.");
 
             // Create withdrawal transaction
+            if (wallet.Cryptocurrency == null)
+            {
+                _logger.LogError("Wallet {WalletAddress} has no associated cryptocurrency", wallet.Address);
+                return Result.Error("Internal error: Wallet has no associated cryptocurrency.");
+            }
+
             var withdrawalTransaction = new Transaction(
                 wallet,
                 TransactionTypeEnum.Withdrawal,
                 request.Amount,
-                request.Fee ?? 0,
+                fee,
                 wallet.Cryptocurrency.Code,
                 request.SourceWalletAddress,
                 request.DestinationAddress,
@@ -331,50 +337,43 @@ public class WalletService : BaseService, IWalletService
             // Mark transaction as processing
             withdrawalTransaction.MarkAsProcessing();
 
-            // Process withdrawal in a transaction scope
-            using var dbContextTransaction = await _transactionRepository.BeginTransactionAsync();
             try
             {
                 // Withdraw from wallet (includes fee)
                 wallet.Withdraw(request.Amount + (request.Fee ?? 0));
                 
-                // Update wallet and add transaction
-                await _walletRepository.UpdateAsync(wallet);
-                await _transactionRepository.AddAsync(withdrawalTransaction);
-                
-                // Commit the transaction
-                await dbContextTransaction.CommitAsync();
+                // Save transaction and update wallet
+                await _transactionRepository.AddAsync(withdrawalTransaction, cancellationToken);
+                await _walletRepository.SaveChangesAsync(cancellationToken);
 
                 // Mark transaction as completed
                 withdrawalTransaction.MarkAsCompleted();
-                await _transactionRepository.SaveChangesAsync();
+                await _transactionRepository.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Successfully withdrew {Amount} {Currency} from wallet {WalletAddress} to {DestinationAddress}",
                     request.Amount, 
                     wallet.Cryptocurrency.Code,
-                    request.WalletAddress,
+                    request.SourceWalletAddress,
                     request.DestinationAddress);
 
                 return Result.Success(_mapper.Map<TransactionDto>(withdrawalTransaction));
             }
             catch (InvalidOperationException ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
                 _logger.LogError(ex, "Failed to process withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
                 return Result.Error("Failed to process withdrawal: " + ex.Message);
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
                 _logger.LogError(ex, "Error occurred while processing withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
-                return Result.Error("An unexpected error occurred while processing the withdrawal.");
+                return Result.Error($"An unexpected error occurred while processing the withdrawal: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while processing withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
-            return Result.Error($"An error occurred while processing the withdrawal from wallet '{request.SourceWalletAddress}'.");
+            return Result.Error($"An error occurred while processing the withdrawal from wallet '{request.SourceWalletAddress}': {ex.Message}");
         }
     }
 
@@ -406,7 +405,7 @@ public class WalletService : BaseService, IWalletService
             // Check if source wallet has sufficient balance (including fee)
             var balanceResult = await GetWalletBalanceAsync(request.SourceWalletAddress, cancellationToken);
             if (!balanceResult.IsSuccess)
-                return balanceResult;
+                return Result<TransactionDto>.Error(string.Join("; ", balanceResult.Errors));
 
             var availableBalance = balanceResult.Value.AvailableBalance;
             if (availableBalance < request.Amount + (request.Fee ?? 0))
@@ -458,8 +457,6 @@ public class WalletService : BaseService, IWalletService
             transferOutTransaction.MarkAsProcessing();
             transferInTransaction.MarkAsProcessing();
 
-            // Process transfer in a transaction scope
-            using var dbContextTransaction = await _transactionRepository.BeginTransactionAsync();
             try
             {
                 // Withdraw from source wallet (includes fee)
@@ -468,21 +465,15 @@ public class WalletService : BaseService, IWalletService
                 // Deposit to destination wallet (amount only, no fee)
                 destinationWallet.Deposit(request.Amount);
                 
-                // Update wallets and add transactions
-                await _walletRepository.UpdateAsync(sourceWallet);
-                await _walletRepository.UpdateAsync(destinationWallet);
-                
-                await _transactionRepository.AddAsync(transferOutTransaction);
-                await _transactionRepository.AddAsync(transferInTransaction);
-                
-                // Commit the transaction
-                await dbContextTransaction.CommitAsync();
+                // Add transactions and save changes
+                await _transactionRepository.AddAsync(transferOutTransaction, cancellationToken);
+                await _transactionRepository.AddAsync(transferInTransaction, cancellationToken);
+                await _walletRepository.SaveChangesAsync(cancellationToken);
 
                 // Mark transactions as completed
                 transferOutTransaction.MarkAsCompleted();
                 transferInTransaction.MarkAsCompleted();
-                
-                await _transactionRepository.SaveChangesAsync();
+                await _transactionRepository.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Successfully transferred {Amount} {Currency} from {SourceWallet} to {DestinationWallet}",
@@ -495,22 +486,20 @@ public class WalletService : BaseService, IWalletService
             }
             catch (InvalidOperationException ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
                 _logger.LogError(ex, "Failed to process transfer from {SourceWallet} to {DestinationWallet}",
                     request.SourceWalletAddress, request.DestinationWalletAddress);
                 return Result.Error("Failed to process transfer: " + ex.Message);
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync(cancellationToken);
                 _logger.LogError(ex, "Error occurred while processing transfer from {SourceWallet} to {DestinationWallet}",
                     request.SourceWalletAddress, request.DestinationWalletAddress);
-                return Result.Error("An unexpected error occurred while processing the transfer.");
+                return Result.Error($"An unexpected error occurred while processing the transfer: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error in TransferFundsAsync");
+            _logger.LogError(ex, "Unexpected error in TransferFundsAsync: {Message}", ex.Message);
             return Result.Error("An unexpected error occurred while processing the transfer.");
         }
     }
@@ -557,43 +546,43 @@ public class WalletService : BaseService, IWalletService
         }
     }
 
-    private async Task<Result> ValidateTransferRequestAsync(TransferRequest request, CancellationToken cancellationToken)
+    private Task<Result> ValidateTransferRequestAsync(TransferRequest request, CancellationToken cancellationToken)
     {
         try
         {
             if (request == null)
-                return Result.Error("Transfer request cannot be null.");
+                return Task.FromResult(Result.Error("Transfer request cannot be null."));
 
             // Validate wallet addresses
             if (string.IsNullOrWhiteSpace(request.SourceWalletAddress) || !IsValidWalletAddress(request.SourceWalletAddress))
-                return Result.Error("Invalid source wallet address format.");
+                return Task.FromResult(Result.Error("Invalid source wallet address format."));
 
             if (string.IsNullOrWhiteSpace(request.DestinationWalletAddress) || !IsValidWalletAddress(request.DestinationWalletAddress))
-                return Result.Error("Invalid destination wallet address format.");
+                return Task.FromResult(Result.Error("Invalid destination wallet address format."));
 
             if (string.Equals(request.SourceWalletAddress, request.DestinationWalletAddress, StringComparison.OrdinalIgnoreCase))
-                return Result.Error("Source and destination wallets cannot be the same.");
+                return Task.FromResult(Result.Error("Source and destination wallets cannot be the same."));
 
             // Validate amount
             if (request.Amount <= 0)
-                return Result.Error("Transfer amount must be greater than zero.");
+                return Task.FromResult(Result.Error("Transfer amount must be greater than zero."));
 
             // Check minimum transfer amount
             var minTransferAmount = 0.0001m; // Example: 0.0001 BTC
             if (request.Amount < minTransferAmount)
-                return Result.Error($"Minimum transfer amount is {minTransferAmount} {GetCurrencyCodeFromWalletAddress(request.SourceWalletAddress) ?? "crypto"}.");
+                return Task.FromResult(Result.Error($"Minimum transfer amount is {minTransferAmount} {GetCurrencyCodeFromWalletAddress(request.SourceWalletAddress) ?? "crypto"}."));
 
             // Validate fee
             if (request.Fee < 0)
-                return Result.Error("Fee cannot be negative.");
+                return Task.FromResult(Result.Error("Fee cannot be negative."));
                 
-            return Result.Success();
+            return Task.FromResult(Result.Success());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error validating transfer request from {SourceWallet} to {DestinationWallet}", 
                 request?.SourceWalletAddress, request?.DestinationWalletAddress);
-            return Result.Error("An error occurred while validating the transfer request.");
+            return Task.FromResult(Result.Error("An error occurred while validating the transfer request."));
         }
 
     }
@@ -602,13 +591,9 @@ public class WalletService : BaseService, IWalletService
     {
         if (string.IsNullOrWhiteSpace(address))
             return false;
-
-        // Basic length check (adjust based on your cryptocurrency requirements)
-        if (address.Length < 26 || address.Length > 64)
-            return false;
-
-        // This is a simplified example - you should implement specific validation for each cryptocurrency
-        return System.Text.RegularExpressions.Regex.IsMatch(address, "^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^0x[a-fA-F0-9]{40}$");
+            
+        // Use the WalletAddressValidator for consistent validation
+        return address.IsValidWalletAddress();
     }
 
     private bool IsValidTransactionHash(string hash)
@@ -627,6 +612,51 @@ public class WalletService : BaseService, IWalletService
 
         return System.Net.IPAddress.TryParse(ipAddress, out _);
     }
+    
+    private async Task<Result> ValidateDepositRequestAsync(DepositRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (request == null)
+                return Result.Error("Deposit request cannot be null.");
+
+            // Validate wallet address
+            if (string.IsNullOrWhiteSpace(request.WalletAddress) || !IsValidWalletAddress(request.WalletAddress))
+                return Result.Error("Invalid wallet address format.");
+
+            // Validate amount
+            if (request.Amount <= 0)
+                return Result.Error("Deposit amount must be greater than zero.");
+
+            // Validate fee (if provided)
+            if (request.Fee < 0)
+                return Result.Error("Fee cannot be negative.");
+
+            // Check if wallet exists
+            var wallet = await _walletRepository.GetByAddressWithDetailsAsync(request.WalletAddress, cancellationToken);
+            if (wallet == null)
+                return Result.NotFound($"Wallet with address '{request.WalletAddress}' not found.");
+
+            if (!wallet.IsActive)
+                return Result.Error("The wallet is not active for deposits.");
+
+            // Validate transaction hash if provided
+            if (!string.IsNullOrWhiteSpace(request.TransactionHash) && !IsValidTransactionHash(request.TransactionHash))
+                return Result.Error("Invalid transaction hash format.");
+
+            // Validate IP address if provided
+            if (!string.IsNullOrWhiteSpace(request.IpAddress) && !IsValidIpAddress(request.IpAddress))
+                return Result.Error("Invalid IP address format.");
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating deposit request for wallet {WalletAddress}", 
+                request?.WalletAddress ?? "unknown");
+            return Result.Error("An error occurred while validating the deposit request.");
+        }
+    }
 
     private string? GetCurrencyCodeFromWalletAddress(string walletAddress)
     {
@@ -638,5 +668,178 @@ public class WalletService : BaseService, IWalletService
             return "ETH";
         
         return null;
+    }
+    
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<WalletDto>>> GetUserWalletsByIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Fetching all wallets for user ID: {UserId}", userId);
+
+            var wallets = await _walletRepository.GetUserWalletsByIdWithDetailsAsync(userId, cancellationToken);
+            var result = _mapper.Map<IReadOnlyList<WalletDto>>(wallets);
+
+            return Result.Success<IReadOnlyList<WalletDto>>(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while fetching wallets for user ID: {UserId}", userId);
+            return Result.Error("An error occurred while fetching wallets.");
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task<Result<WalletDto>> GetUserWalletByCurrencyAsync(
+        Guid userId,
+        string currencyCode,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Fetching {Currency} wallet for user ID: {UserId}", currencyCode, userId);
+
+            if (string.IsNullOrWhiteSpace(currencyCode))
+                return Result.Error("Currency code cannot be empty.");
+                
+            var wallet = await _walletRepository.GetUserWalletByCurrencyWithDetailsAsync(userId, currencyCode, cancellationToken);
+            if (wallet == null)
+            {
+                _logger.LogWarning("{Currency} wallet not found for user ID: {UserId}", currencyCode, userId);
+                return Result.NotFound($"{currencyCode} wallet not found for user.");
+            }
+
+            var result = _mapper.Map<WalletDto>(wallet);
+            return Result.Success(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while fetching {Currency} wallet for user ID: {UserId}", currencyCode, userId);
+            return Result.Error($"An error occurred while fetching {currencyCode} wallet.");
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task<Result<Dictionary<string, decimal>>> GetUserBalancesAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Fetching balances for user ID: {UserId}", userId);
+
+            var wallets = await _walletRepository.GetUserWalletsByIdWithDetailsAsync(userId, cancellationToken);
+            var balances = wallets.ToDictionary(
+                w => w.Cryptocurrency.Code, 
+                w => w.Balance);
+
+            return Result.Success(balances);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while fetching balances for user ID: {UserId}", userId);
+            return Result.Error("An error occurred while fetching wallet balances.");
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task<Result<TransactionDto>> DepositToUserWalletAsync(
+        Guid userId,
+        string currencyCode,
+        decimal amount,
+        string? transactionHash = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Processing deposit of {Amount} {Currency} to user ID: {UserId}", 
+                amount, currencyCode, userId);
+
+            // Validate input
+            if (amount <= 0)
+                return Result.Error("Deposit amount must be greater than zero.");
+                
+            // Get the user's wallet for the specified currency
+            var walletResult = await GetUserWalletByCurrencyAsync(userId, currencyCode, cancellationToken);
+            if (!walletResult.IsSuccess)
+                return Result.NotFound($"{currencyCode} wallet not found for user.");
+                
+            var wallet = await _walletRepository.GetByAddressWithDetailsAsync(walletResult.Value?.Address ?? string.Empty, cancellationToken);
+            
+            if (wallet == null || string.IsNullOrEmpty(wallet.Address))
+            {
+                _logger.LogError("Wallet not found for user ID: {UserId} and currency: {Currency}", userId, currencyCode);
+                return Result.NotFound("Wallet not found or invalid wallet address.");
+            }
+            
+            // Process the deposit
+            var depositRequest = new DepositRequest
+            {
+                WalletAddress = wallet.Address,
+                Amount = amount,
+                TransactionHash = transactionHash ?? string.Empty
+            };
+            
+            return await DepositFundsAsync(depositRequest, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing deposit of {Amount} {Currency} to user ID: {UserId}", 
+                amount, currencyCode, userId);
+            return Result.Error($"An error occurred while processing the deposit: {ex.Message}");
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task<Result<TransactionDto>> WithdrawFromUserWalletAsync(
+        Guid userId,
+        string currencyCode,
+        decimal amount,
+        string destinationAddress,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Processing withdrawal of {Amount} {Currency} from user ID: {UserId} to {Destination}", 
+                amount, currencyCode, userId, destinationAddress);
+
+            // Validate input
+            if (amount <= 0)
+                return Result.Error("Withdrawal amount must be greater than zero.");
+                
+            if (string.IsNullOrWhiteSpace(destinationAddress))
+                return Result.Error("Destination address is required.");
+                
+            // Get the user's wallet for the specified currency
+            var walletResult = await GetUserWalletByCurrencyAsync(userId, currencyCode, cancellationToken);
+            if (!walletResult.IsSuccess)
+                return Result.NotFound($"{currencyCode} wallet not found for user.");
+                
+            var wallet = await _walletRepository.GetByAddressWithDetailsAsync(walletResult.Value?.Address ?? string.Empty, cancellationToken);
+            
+            if (wallet == null || string.IsNullOrEmpty(wallet.Address))
+            {
+                _logger.LogError("Wallet not found for user ID: {UserId} and currency: {Currency}", userId, currencyCode);
+                return Result.NotFound("Wallet not found or invalid wallet address.");
+            }
+            
+            // Process the withdrawal
+            var withdrawRequest = new WithdrawRequest
+            {
+                SourceWalletAddress = wallet.Address,
+                Amount = amount,
+                DestinationAddress = destinationAddress ?? string.Empty
+            };
+            
+            return await WithdrawFundsAsync(withdrawRequest, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing withdrawal of {Amount} {Currency} from user ID: {UserId}", 
+                amount, currencyCode, userId);
+            return Result.Error($"An error occurred while processing the withdrawal: {ex.Message}");
+        }
     }
 }

@@ -1,9 +1,10 @@
 using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Enums;
+using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
 
-namespace CryptoWallet.Domain.Transactions;
+namespace CryptoWallet.Domain.Interfaces.Repositories;
 
 /// <summary>
 /// Defines the contract for transaction data access operations
@@ -70,5 +71,29 @@ public interface ITransactionRepository : IRepository<Transaction>
         TransactionStatusEnum statusEnum,
         int pageNumber = 1,
         int pageSize = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves a list of pending withdrawal transactions for a specific wallet
+    /// </summary>
+    /// <param name="walletId">The unique identifier of the wallet</param>
+    /// <param name="cancellationToken">A token to cancel the operation</param>
+    /// <returns>A task that represents the asynchronous operation, containing a list of pending withdrawal transactions</returns>
+    Task<IReadOnlyList<Transaction>> GetPendingWithdrawalsAsync(
+        Guid walletId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Calculates the total amount of withdrawn funds for a user's wallet in a specific currency within a date range
+    /// </summary>
+    /// <param name="userId">The unique identifier of the user</param>
+    /// <param name="cryptocurrencyId">The unique identifier of the cryptocurrency</param>
+    /// <param name="fromDate">The start date of the range (inclusive)</param>
+    /// <param name="cancellationToken">A token to cancel the operation</param>
+    /// <returns>A task that represents the asynchronous operation, containing the total withdrawn amount</returns>
+    Task<decimal> GetTotalWithdrawnAmountAsync(
+        Guid userId,
+        Guid cryptocurrencyId,
+        DateTimeOffset fromDate,
         CancellationToken cancellationToken = default);
 }

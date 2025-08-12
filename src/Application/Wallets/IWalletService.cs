@@ -1,6 +1,6 @@
 using Ardalis.Result;
 using CryptoWallet.Application.Common.Interfaces;
-using CryptoWallet.Application.Wallets.Dtos;
+using CryptoWallet.Domain.Models.DTOs.Wallets;
 using CryptoWallet.Domain.Users;
 
 namespace CryptoWallet.Application.Wallets;
@@ -80,5 +80,69 @@ public interface IWalletService : IService
     /// <returns>Transaction DTO or an error</returns>
     Task<Result<TransactionDto>> TransferFundsAsync(
         TransferRequest request,
+        CancellationToken cancellationToken = default);
+        
+    /// <summary>
+    /// Gets all wallets for a specific user by user ID
+    /// </summary>
+    /// <param name="userId">The user ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of wallet DTOs or an error</returns>
+    Task<Result<IReadOnlyList<WalletDto>>> GetUserWalletsByIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+        
+    /// <summary>
+    /// Gets a user's wallet for a specific cryptocurrency by user ID
+    /// </summary>
+    /// <param name="userId">The user ID</param>
+    /// <param name="currencyCode">Cryptocurrency code (e.g., "BTC", "ETH")</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Wallet DTO or an error</returns>
+    Task<Result<WalletDto>> GetUserWalletByCurrencyAsync(
+        Guid userId,
+        string currencyCode,
+        CancellationToken cancellationToken = default);
+        
+    /// <summary>
+    /// Gets balances for all wallets of a specific user
+    /// </summary>
+    /// <param name="userId">The user ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Dictionary of currency codes and balances, or an error</returns>
+    Task<Result<Dictionary<string, decimal>>> GetUserBalancesAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+        
+    /// <summary>
+    /// Deposits funds to a user's wallet by currency
+    /// </summary>
+    /// <param name="userId">The user ID</param>
+    /// <param name="currencyCode">Currency code (e.g., "BTC", "ETH")</param>
+    /// <param name="amount">Amount to deposit</param>
+    /// <param name="transactionHash">Transaction hash (optional)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Transaction DTO or an error</returns>
+    Task<Result<TransactionDto>> DepositToUserWalletAsync(
+        Guid userId,
+        string currencyCode,
+        decimal amount,
+        string? transactionHash = null,
+        CancellationToken cancellationToken = default);
+        
+    /// <summary>
+    /// Withdraws funds from a user's wallet by currency
+    /// </summary>
+    /// <param name="userId">The user ID</param>
+    /// <param name="currencyCode">Currency code (e.g., "BTC", "ETH")</param>
+    /// <param name="amount">Amount to withdraw</param>
+    /// <param name="destinationAddress">Destination wallet address</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Transaction DTO or an error</returns>
+    Task<Result<TransactionDto>> WithdrawFromUserWalletAsync(
+        Guid userId,
+        string currencyCode,
+        decimal amount,
+        string destinationAddress,
         CancellationToken cancellationToken = default);
 }
