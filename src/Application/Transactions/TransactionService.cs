@@ -68,20 +68,44 @@ public class TransactionService : BaseService, ITransactionService
         {
             _logger.LogInformation("Fetching transactions for wallet: {WalletAddress}", walletAddress);
 
+            // Input validation
             if (string.IsNullOrWhiteSpace(walletAddress))
                 return Result.Error("Wallet address cannot be empty.");
 
-            // Check if wallet exists
-            var walletExists = await _walletRepository.ExistsByAddressAsync(walletAddress, cancellationToken);
-            if (!walletExists)
+            if (!IsValidWalletAddress(walletAddress))
+                return Result.Error("Invalid wallet address format.");
+
+            if (pageNumber < 1)
+                return Result.Error("Page number must be greater than zero.");
+
+            if (pageSize < 1 || pageSize > 100)
+                return Result.Error("Page size must be between 1 and 100.");
+
+            // Check if wallet exists and is active
+            var wallet = await _walletRepository.GetByAddressWithDetailsAsync(walletAddress, cancellationToken);
+            if (wallet == null)
             {
                 _logger.LogWarning("Wallet with address {WalletAddress} not found", walletAddress);
                 return Result.NotFound($"Wallet with address '{walletAddress}' not found.");
             }
 
+            if (!wallet.IsActive)
+            {
+                _logger.LogWarning("Wallet with address {WalletAddress} is not active", walletAddress);
+                return Result.Error("This wallet is not active and cannot perform transactions.");
+            }
+
+            // Build query with additional filtering options
             var query = _transactionRepository.GetQueryable()
                 .Where(t => t.Wallet.Address == walletAddress)
                 .OrderByDescending(t => t.CreatedAt);
+
+            var transactionCount = await query.CountAsync(cancellationToken);
+            if (transactionCount == 0)
+            {
+                _logger.LogInformation("No transactions found for wallet: {WalletAddress}", walletAddress);
+                return Result.Success(new PaginatedList<TransactionDto>([], 0, pageNumber, pageSize));
+            }
 
             var transactions = await PaginatedList<TransactionDto>.CreateAsync(
                 query.ProjectTo<TransactionDto>(_mapper.ConfigurationProvider),
@@ -89,13 +113,16 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
+            _logger.LogInformation("Successfully retrieved {Count} transactions for wallet: {WalletAddress}", 
+                transactions.Items.Count, walletAddress);
+
             return Result.Success(transactions);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while fetching transactions for wallet: {WalletAddress}",
                 walletAddress);
-            return Result.Error($"An error occurred while fetching transactions for wallet '{walletAddress}'.");
+            return Result.Error("An unexpected error occurred while retrieving transactions. Please try again later.");
         }
     }
 
@@ -205,24 +232,84 @@ public class TransactionService : BaseService, ITransactionService
         DateTimeOffset endDate,
         int pageNumber = 1,
         int pageSize = 20,
+        string? walletAddress = null,
+        string? status = null,
+        string? type = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.LogInformation("Fetching transactions between {StartDate} and {EndDate}", startDate, endDate);
 
+            // Input validation
             if (startDate > endDate)
                 return Result.Error("Start date cannot be after end date.");
+
+            var maxDateRangeInDays = 365; // 1 year
+            if ((endDate - startDate).TotalDays > maxDateRangeInDays)
+                return Result.Error($"Date range cannot exceed {maxDateRangeInDays} days.");
 
             if (startDate > DateTimeOffset.UtcNow)
                 return Result.Error("Start date cannot be in the future.");
 
+            if (pageNumber < 1)
+                return Result.Error("Page number must be greater than zero.");
+
+            if (pageSize < 1 || pageSize > 100)
+                return Result.Error("Page size must be between 1 and 100.");
+
             // Cap the end date to current time if it's in the future
             var effectiveEndDate = endDate > DateTimeOffset.UtcNow ? DateTimeOffset.UtcNow : endDate;
 
+            // Build query with filters
             var query = _transactionRepository.GetQueryable()
-                .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= effectiveEndDate)
-                .OrderByDescending(t => t.CreatedAt);
+                .Where(t => t.CreatedAt >= startDate && t.CreatedAt <= effectiveEndDate);
+
+            // Apply additional filters if provided
+            if (!string.IsNullOrWhiteSpace(walletAddress))
+            {
+                if (!IsValidWalletAddress(walletAddress))
+                    return Result.Error("Invalid wallet address format.");
+                
+                query = query.Where(t => t.Wallet.Address == walletAddress);
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var normalizedStatus = status.Trim().ToLowerInvariant();
+                query = query.Where(t => t.Status.ToLower() == normalizedStatus);
+            }
+
+            if (!string.IsNullOrWhiteSpace(type))
+            {
+                var normalizedType = type.Trim().ToLowerInvariant();
+                query = query.Where(t => t.Type.ToLower() == normalizedType);
+            }
+
+            if (minAmount.HasValue && minAmount > 0)
+            {
+                query = query.Where(t => t.Amount >= minAmount.Value);
+            }
+
+            if (maxAmount.HasValue && maxAmount > 0)
+            {
+                if (minAmount.HasValue && maxAmount < minAmount)
+                    return Result.Error("Maximum amount cannot be less than minimum amount.");
+                    
+                query = query.Where(t => t.Amount <= maxAmount.Value);
+            }
+
+            // Order and paginate
+            query = query.OrderByDescending(t => t.CreatedAt);
+
+            var transactionCount = await query.CountAsync(cancellationToken);
+            if (transactionCount == 0)
+            {
+                _logger.LogInformation("No transactions found for the specified criteria");
+                return Result.Success(new PaginatedList<TransactionDto>([], 0, pageNumber, pageSize));
+            }
 
             var transactions = await PaginatedList<TransactionDto>.CreateAsync(
                 query.ProjectTo<TransactionDto>(_mapper.ConfigurationProvider),
@@ -230,13 +317,16 @@ public class TransactionService : BaseService, ITransactionService
                 pageSize,
                 cancellationToken);
 
+            _logger.LogInformation("Successfully retrieved {Count} transactions for the specified criteria", 
+                transactions.Items.Count);
+
             return Result.Success(transactions);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while fetching transactions between {StartDate} and {EndDate}",
                 startDate, endDate);
-            return Result.Error($"An error occurred while fetching transactions for the specified date range.");
+            return Result.Error("An unexpected error occurred while retrieving transactions. Please try again later.");
         }
     }
 
@@ -262,16 +352,16 @@ public class TransactionService : BaseService, ITransactionService
             }
 
             // Validate status transition
-            if (!IsValidStatusTransition(transaction.Status, status))
+            if (!IsValidStatusTransition(transaction.StatusEnum, status))
             {
                 _logger.LogWarning(
                     "Invalid status transition from {OldStatus} to {NewStatus} for transaction {TransactionId}",
-                    transaction.Status, status, transactionId);
-                return Result.Error($"Cannot change status from '{transaction.Status}' to '{status}'.");
+                    transaction.StatusEnum, status, transactionId);
+                return Result.Error($"Cannot change status from '{transaction.StatusEnum}' to '{status}'.");
             }
 
             // Update transaction status
-            var previousStatus = transaction.Status;
+            var previousStatus = transaction.StatusEnum;
             transaction.UpdateStatus(status, notes);
 
             // If the transaction is now completed, update the confirmed timestamp
@@ -299,39 +389,121 @@ public class TransactionService : BaseService, ITransactionService
 
     #region Private Helper Methods
 
+    private bool IsValidWalletAddress(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            return false;
+
+        // Basic length check (adjust based on your cryptocurrency requirements)
+        if (address.Length < 26 || address.Length > 64)
+            return false;
+
+        // Check for valid characters (alphanumeric, but depends on the cryptocurrency)
+        // This is a simplified example - you should implement specific validation for each cryptocurrency
+        return System.Text.RegularExpressions.Regex.IsMatch(address, "^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^0x[a-fA-F0-9]{40}$");
+    }
+
+    private bool IsValidTransactionType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+            return false;
+
+        // Define valid transaction types
+        var validTypes = new[] 
+        { 
+            "deposit", 
+            "withdrawal", 
+            "transfer_in", 
+            "transfer_out",
+            "exchange"
+        };
+
+        return validTypes.Contains(type.ToLowerInvariant());
+    }
+
+    private bool IsValidTransactionStatus(string status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        // Define valid transaction statuses
+        var validStatuses = new[] 
+        { 
+            "pending",
+            "processing",
+            "completed",
+            "failed",
+            "cancelled"
+        };
+
+        return validStatuses.Contains(status.ToLowerInvariant());
+    }
+
     private bool IsValidStatusTransition(string currentStatus, string newStatus)
     {
         // Normalize the statuses for comparison
         currentStatus = currentStatus?.Trim().ToLowerInvariant() ?? string.Empty;
         newStatus = newStatus?.Trim().ToLowerInvariant() ?? string.Empty;
 
-        // Define valid status transitions
-        var validTransitions = new Dictionary<string, HashSet<string>>
-        {
-            // Pending can go to processing, completed, or failed
-            ["pending"] = new HashSet<string> { "processing", "completed", "failed" },
-
-            // Processing can go to completed or failed
-            ["processing"] = new HashSet<string> { "completed", "failed" },
-
-            // Completed and failed are terminal states
-            ["completed"] = new HashSet<string>(),
-            ["failed"] = new HashSet<string>(),
-
-            // Cancelled is also a terminal state
-            ["cancelled"] = new HashSet<string>()
-        };
-
-        // If the current status isn't in our dictionary, allow the transition (we don't know any better)
-        if (!validTransitions.ContainsKey(currentStatus))
-            return true;
-
-        // If the new status is the same as the current status, it's always valid
+        // If the statuses are the same, it's always a valid transition (idempotent operation)
         if (currentStatus == newStatus)
             return true;
 
+        // Define valid status transitions with more granular control
+        var validTransitions = new Dictionary<string, HashSet<string>>
+        {
+            // Pending can go to processing, completed, failed, or cancelled
+            ["pending"] = new HashSet<string> 
+            { 
+                "processing",  // Transaction is being processed
+                "completed",   // Direct completion for simple transactions
+                "failed",      // Transaction failed
+                "cancelled"    // User or system cancelled the transaction
+            },
+
+            // Processing can go to completed or failed
+            ["processing"] = new HashSet<string> 
+            { 
+                "completed",   // Successfully processed
+                "failed",      // Processing failed
+                "cancelled"    // User or system cancelled during processing
+            },
+
+            // Completed is a terminal state (no further transitions allowed)
+            ["completed"] = new HashSet<string>(),
+            
+            // Failed can be retried (goes back to pending)
+            ["failed"] = new HashSet<string> 
+            { 
+                "pending"      // Allow retrying failed transactions
+            },
+
+            // Cancelled is a terminal state (no further transitions allowed)
+            ["cancelled"] = new HashSet<string>()
+        };
+
+        // If the current status isn't in our dictionary, log a warning but allow the transition
+        if (!validTransitions.ContainsKey(currentStatus))
+        {
+            _logger.LogWarning("Unknown current status '{CurrentStatus}' during status transition validation. " +
+                             "Allowing transition to '{NewStatus}' but this should be reviewed.", 
+                             currentStatus, newStatus);
+            return true;
+        }
+
         // Check if the transition is valid
-        return validTransitions[currentStatus].Contains(newStatus);
+        var isValid = validTransitions[currentStatus].Contains(newStatus);
+        
+        if (!isValid)
+        {
+            _logger.Warning("Invalid status transition from '{CurrentStatus}' to '{NewStatus}'. " +
+                          "Allowed transitions: {AllowedTransitions}",
+                          currentStatus, 
+                          newStatus, 
+                          string.Join(", ", validTransitions[currentStatus]));
+        }
+
+        return isValid;
     }
 
     #endregion

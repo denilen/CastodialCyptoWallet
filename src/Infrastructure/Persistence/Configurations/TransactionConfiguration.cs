@@ -59,11 +59,11 @@ public class TransactionConfiguration : BaseAuditableEntityConfiguration<Transac
             .HasColumnType("jsonb");
 
         // Settings of transfers
-        builder.Property(t => t.Type)
+        builder.Property(t => t.TypeEnum)
             .HasConversion<string>()
             .HasMaxLength(20);
 
-        builder.Property(t => t.Status)
+        builder.Property(t => t.StatusEnum)
             .HasConversion<string>()
             .HasMaxLength(20);
 

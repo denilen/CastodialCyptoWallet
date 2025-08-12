@@ -1,5 +1,6 @@
 using CryptoWallet.Application.Common.Services;
 using CryptoWallet.Application.Wallets.Dtos;
+using CryptoWallet.Domain.Enums;
 using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
@@ -189,9 +190,9 @@ public class WalletService : BaseService, IWalletService
             // Create transaction record
             var transaction = new Transaction(
                 wallet: wallet,
-                type: TransactionType.Deposit,
+                typeEnum: TransactionTypeEnum.Deposit,
                 amount: request.Amount,
-                status: TransactionStatus.Completed,
+                status: TransactionStatusEnum.Completed,
                 transactionHash: request.TransactionHash,
                 notes: request.Notes,
                 ipAddress: request.IpAddress,
@@ -258,10 +259,10 @@ public class WalletService : BaseService, IWalletService
             // Create withdrawal transaction
             var transaction = new Transaction(
                 wallet: wallet,
-                type: TransactionType.Withdrawal,
+                typeEnum: TransactionTypeEnum.Withdrawal,
                 amount: request.Amount,
                 fee: request.Fee,
-                status: TransactionStatus.Pending, // Will be updated when confirmed on the blockchain
+                status: TransactionStatusEnum.Pending, // Will be updated when confirmed on the blockchain
                 destinationAddress: request.DestinationAddress,
                 notes: request.Notes,
                 ipAddress: request.IpAddress,
@@ -359,10 +360,10 @@ public class WalletService : BaseService, IWalletService
                 // Create transfer transaction (from source to destination)
                 var transferTransaction = new Transaction(
                     wallet: sourceWallet,
-                    type: TransactionType.TransferOut,
+                    typeEnum: TransactionTypeEnum.TransferOut,
                     amount: request.Amount,
                     fee: request.Fee,
-                    status: TransactionStatus.Completed,
+                    status: TransactionStatusEnum.Completed,
                     destinationAddress: destinationWallet.Address,
                     notes: request.Notes,
                     ipAddress: request.IpAddress,
@@ -371,9 +372,9 @@ public class WalletService : BaseService, IWalletService
                 // Create corresponding receive transaction for the destination wallet
                 var receiveTransaction = new Transaction(
                     wallet: destinationWallet,
-                    type: TransactionType.TransferIn,
+                    typeEnum: TransactionTypeEnum.TransferIn,
                     amount: request.Amount,
-                    status: TransactionStatus.Completed,
+                    status: TransactionStatusEnum.Completed,
                     relatedTransactionId: transferTransaction.Id,
                     notes: request.Notes,
                     ipAddress: request.IpAddress,
@@ -419,50 +420,200 @@ public class WalletService : BaseService, IWalletService
         if (request == null)
             return Result.Error("Deposit request cannot be null.");
 
+        // Validate wallet address format
+        if (string.IsNullOrWhiteSpace(request.WalletAddress) || !IsValidWalletAddress(request.WalletAddress))
+            return Result.Error("Invalid wallet address format.");
+
+        // Validate amount
         if (request.Amount <= 0)
             return Result.Error("Deposit amount must be greater than zero.");
 
-        // Add any additional validation rules here
+        // Check minimum deposit amount (e.g., 0.0001 BTC)
+        var minDepositAmount = 0.0001m;
+        if (request.Amount < minDepositAmount)
+            return Result.Error($"Minimum deposit amount is {minDepositAmount} {GetCurrencyCodeFromWalletAddress(request.WalletAddress) ?? "crypto"}.");
+
+        // Check if wallet exists and is active
+        var wallet = await _walletRepository.GetByAddressWithDetailsAsync(request.WalletAddress, cancellationToken);
+        if (wallet == null)
+            return Result.NotFound($"Wallet with address '{request.WalletAddress}' not found.");
+        
+        if (!wallet.IsActive)
+            return Result.Error("This wallet is not active for deposits.");
+
+        // Validate transaction hash if provided
+        if (!string.IsNullOrWhiteSpace(request.TransactionHash) && !IsValidTransactionHash(request.TransactionHash))
+            return Result.Error("Invalid transaction hash format.");
+
+        // Validate IP address
+        if (!string.IsNullOrWhiteSpace(request.IpAddress) && !IsValidIpAddress(request.IpAddress))
+            return Result.Error("Invalid IP address format.");
 
         return Result.Success();
     }
 
-    private async Task<Result> ValidateWithdrawalRequestAsync(WithdrawRequest request,
-                                                              CancellationToken cancellationToken)
+    private async Task<Result> ValidateWithdrawalRequestAsync(WithdrawRequest request, CancellationToken cancellationToken)
     {
         if (request == null)
             return Result.Error("Withdrawal request cannot be null.");
 
+        // Validate source wallet address
+        if (string.IsNullOrWhiteSpace(request.SourceWalletAddress) || !IsValidWalletAddress(request.SourceWalletAddress))
+            return Result.Error("Invalid source wallet address format.");
+
+        // Validate destination address
+        if (string.IsNullOrWhiteSpace(request.DestinationAddress) || !IsValidWalletAddress(request.DestinationAddress))
+            return Result.Error("Invalid destination wallet address format.");
+
+        // Validate amount
         if (request.Amount <= 0)
             return Result.Error("Withdrawal amount must be greater than zero.");
 
+        // Check minimum withdrawal amount
+        var minWithdrawalAmount = 0.001m; // Example: 0.001 BTC
+        if (request.Amount < minWithdrawalAmount)
+            return Result.Error($"Minimum withdrawal amount is {minWithdrawalAmount} {GetCurrencyCodeFromWalletAddress(request.SourceWalletAddress) ?? "crypto"}.");
+
+        // Check maximum withdrawal amount (daily limit)
+        var maxDailyWithdrawal = 10m; // Example: 10 BTC per day
+        var wallet = await _walletRepository.GetByAddressWithDetailsAsync(request.SourceWalletAddress, cancellationToken);
+        if (wallet != null)
+        {
+            var dailyWithdrawals = await _transactionRepository.GetDailyWithdrawalAmountAsync(
+                wallet.Id, 
+                DateTimeOffset.UtcNow.AddDays(-1), 
+                cancellationToken);
+
+            if (dailyWithdrawals + request.Amount > maxDailyWithdrawal)
+                return Result.Error($"Daily withdrawal limit of {maxDailyWithdrawal} {wallet.Cryptocurrency.Code} exceeded.");
+        }
+
+        // Validate fee
         if (request.Fee < 0)
             return Result.Error("Fee cannot be negative.");
 
-        // Add any additional validation rules here
+        // Check if wallet has sufficient balance (including fee)
+        var balanceResult = await GetWalletBalanceAsync(request.SourceWalletAddress, cancellationToken);
+        if (!balanceResult.IsSuccess)
+            return balanceResult;
+
+        var availableBalance = balanceResult.Value.AvailableBalance;
+        if (availableBalance < request.Amount + (request.Fee ?? 0))
+            return Result.Error("Insufficient balance to complete the withdrawal.");
+
+        // Validate IP address and user agent for security
+        if (!string.IsNullOrWhiteSpace(request.IpAddress) && !IsValidIpAddress(request.IpAddress))
+            return Result.Error("Invalid IP address format.");
+
+        if (string.IsNullOrWhiteSpace(request.UserAgent))
+            return Result.Error("User-Agent header is required for security reasons.");
 
         return Result.Success();
     }
 
-    private async Task<Result> ValidateTransferRequestAsync(TransferRequest request,
-                                                            CancellationToken cancellationToken)
+    private async Task<Result> ValidateTransferRequestAsync(TransferRequest request, CancellationToken cancellationToken)
     {
         if (request == null)
             return Result.Error("Transfer request cannot be null.");
 
-        if (string.Equals(request.SourceWalletAddress, request.DestinationWalletAddress,
-                StringComparison.OrdinalIgnoreCase))
+        // Validate wallet addresses
+        if (string.IsNullOrWhiteSpace(request.SourceWalletAddress) || !IsValidWalletAddress(request.SourceWalletAddress))
+            return Result.Error("Invalid source wallet address format.");
+
+        if (string.IsNullOrWhiteSpace(request.DestinationWalletAddress) || !IsValidWalletAddress(request.DestinationWalletAddress))
+            return Result.Error("Invalid destination wallet address format.");
+
+        if (string.Equals(request.SourceWalletAddress, request.DestinationWalletAddress, StringComparison.OrdinalIgnoreCase))
             return Result.Error("Source and destination wallets cannot be the same.");
 
+        // Validate amount
         if (request.Amount <= 0)
             return Result.Error("Transfer amount must be greater than zero.");
 
+        // Check minimum transfer amount
+        var minTransferAmount = 0.0001m; // Example: 0.0001 BTC
+        if (request.Amount < minTransferAmount)
+            return Result.Error($"Minimum transfer amount is {minTransferAmount} {GetCurrencyCodeFromWalletAddress(request.SourceWalletAddress) ?? "crypto"}.");
+
+        // Validate fee
         if (request.Fee < 0)
             return Result.Error("Fee cannot be negative.");
 
-        // Add any additional validation rules here
+        // Check if source wallet has sufficient balance (including fee)
+        var balanceResult = await GetWalletBalanceAsync(request.SourceWalletAddress, cancellationToken);
+        if (!balanceResult.IsSuccess)
+            return balanceResult;
+
+        var availableBalance = balanceResult.Value.AvailableBalance;
+        if (availableBalance < request.Amount + (request.Fee ?? 0))
+            return Result.Error("Insufficient balance to complete the transfer.");
+
+        // Check if destination wallet exists and is active
+        var destinationWallet = await _walletRepository.GetByAddressWithDetailsAsync(request.DestinationWalletAddress, cancellationToken);
+        if (destinationWallet == null)
+            return Result.NotFound($"Destination wallet with address '{request.DestinationWalletAddress}' not found.");
+        
+        if (!destinationWallet.IsActive)
+            return Result.Error("The destination wallet is not active for receiving funds.");
+
+        // Check if both wallets are for the same cryptocurrency
+        var sourceWallet = await _walletRepository.GetByAddressWithDetailsAsync(request.SourceWalletAddress, cancellationToken);
+        if (sourceWallet != null && sourceWallet.CryptocurrencyId != destinationWallet.CryptocurrencyId)
+            return Result.Error("Source and destination wallets must be for the same cryptocurrency.");
+
+        // Validate IP address and user agent for security
+        if (!string.IsNullOrWhiteSpace(request.IpAddress) && !IsValidIpAddress(request.IpAddress))
+            return Result.Error("Invalid IP address format.");
+
+        if (string.IsNullOrWhiteSpace(request.UserAgent))
+            return Result.Error("User-Agent header is required for security reasons.");
 
         return Result.Success();
+    }
+
+    #region Private Helper Methods
+
+    private bool IsValidWalletAddress(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            return false;
+
+        // Basic length check (adjust based on your cryptocurrency requirements)
+        if (address.Length < 26 || address.Length > 64)
+            return false;
+
+        // Check for valid characters (alphanumeric, but depends on the cryptocurrency)
+        // This is a simplified example - you should implement specific validation for each cryptocurrency
+        return System.Text.RegularExpressions.Regex.IsMatch(address, "^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^0x[a-fA-F0-9]{40}$");
+    }
+
+    private bool IsValidTransactionHash(string hash)
+    {
+        if (string.IsNullOrWhiteSpace(hash))
+            return false;
+
+        // Basic format check for transaction hashes (adjust based on your needs)
+        return System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-fA-F0-9]{64,128}$");
+    }
+
+    private bool IsValidIpAddress(string ipAddress)
+    {
+        if (string.IsNullOrWhiteSpace(ipAddress))
+            return false;
+
+        return System.Net.IPAddress.TryParse(ipAddress, out _);
+    }
+
+    private string? GetCurrencyCodeFromWalletAddress(string walletAddress)
+    {
+        // This is a simplified example - in a real application, you would determine
+        // the currency based on the wallet address format or by querying the database
+        if (walletAddress.StartsWith("1") || walletAddress.StartsWith("3") || walletAddress.StartsWith("bc1"))
+            return "BTC";
+        if (walletAddress.StartsWith("0x") && walletAddress.Length == 42)
+            return "ETH";
+        
+        return null;
     }
 
     #endregion

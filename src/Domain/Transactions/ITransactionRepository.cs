@@ -1,4 +1,5 @@
 using CryptoWallet.Domain.Common;
+using CryptoWallet.Domain.Enums;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
 
@@ -60,13 +61,13 @@ public interface ITransactionRepository : IRepository<Transaction>
     /// <summary>
     /// Retrieves a paginated list of transactions filtered by status
     /// </summary>
-    /// <param name="status">The status to filter transactions by</param>
+    /// <param name="statusEnum">The status to filter transactions by</param>
     /// <param name="pageNumber">The page number (1-based)</param>
     /// <param name="pageSize">The number of items per page</param>
     /// <param name="cancellationToken">A token to cancel the operation</param>
     /// <returns>A task that represents the asynchronous operation, containing a paginated list of transactions with the specified status</returns>
     Task<PaginatedList<Transaction>> GetByStatusAsync(
-        TransactionStatus status,
+        TransactionStatusEnum statusEnum,
         int pageNumber = 1,
         int pageSize = 20,
         CancellationToken cancellationToken = default);

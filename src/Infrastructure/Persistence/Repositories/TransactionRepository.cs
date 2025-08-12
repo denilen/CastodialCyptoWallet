@@ -1,4 +1,5 @@
 using CryptoWallet.Domain.Common;
+using CryptoWallet.Domain.Enums;
 using CryptoWallet.Domain.Transactions;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;
@@ -99,7 +100,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
 
     /// <inheritdoc />
     public async Task<PaginatedList<Transaction>> GetByStatusAsync(
-        TransactionStatus status,
+        TransactionStatusEnum statusEnum,
         int pageNumber = 1,
         int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -114,7 +115,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
             .AsNoTracking()
             .Include(t => t.Wallet)
             .ThenInclude(w => w.Cryptocurrency)
-            .Where(t => t.Status == status)
+            .Where(t => t.StatusEnum == statusEnum)
             .OrderBy(t => t.CreatedAt);
 
         return await PaginatedList<Transaction>.CreateAsync(query, pageNumber, pageSize, cancellationToken);
