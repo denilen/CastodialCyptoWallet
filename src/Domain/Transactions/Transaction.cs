@@ -34,11 +34,21 @@ public class Transaction : AuditableEntity
     /// Type of transaction
     /// </summary>
     public TransactionTypeEnum TypeEnum { get; private set; }
+    
+    /// <summary>
+    /// String representation of the transaction type
+    /// </summary>
+    public string Type => TypeEnum.ToString();
 
     /// <summary>
     /// Status of the transaction
     /// </summary>
     public TransactionStatusEnum StatusEnum { get; private set; }
+    
+    /// <summary>
+    /// String representation of the transaction status
+    /// </summary>
+    public string Status => StatusEnum.ToString();
 
     /// <summary>
     /// Amount of the transaction (positive for deposits, negative for withdrawals)

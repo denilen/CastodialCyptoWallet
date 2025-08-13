@@ -73,7 +73,7 @@ public class UserServiceTests
 
         _userRepositoryMock
             .Setup(x => x.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((User)null);
+            .ReturnsAsync(default(User));
 
         _passwordHasherMock
             .Setup(x => x.HashPassword(request.Password))
@@ -190,7 +190,7 @@ public class UserServiceTests
 
         _userRepositoryMock
             .Setup(x => x.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((User)null);
+            .ReturnsAsync(default(User));
 
         // Act
         var result = await _userService.GetUserByIdAsync(userId);

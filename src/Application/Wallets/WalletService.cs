@@ -181,15 +181,20 @@ public class WalletService : BaseService, IWalletService
             // Validate request
             var validationResult = await ValidateDepositRequestAsync(request, cancellationToken);
             if (!validationResult.IsSuccess)
+            {
+                _logger.LogWarning("Deposit validation failed: {Errors}", string.Join("; ", validationResult.Errors));
                 return validationResult;
+            }
 
             // Get wallet with details
+            _logger.LogInformation("Fetching wallet with address: {WalletAddress}", request.WalletAddress);
             var wallet = await _walletRepository.GetByAddressWithDetailsAsync(request.WalletAddress, cancellationToken);
             if (wallet == null)
             {
                 _logger.LogWarning("Wallet with address {WalletAddress} not found", request.WalletAddress);
                 return Result.NotFound($"Wallet with address '{request.WalletAddress}' not found.");
             }
+            _logger.LogInformation("Found wallet with ID: {WalletId}, Balance: {Balance}", wallet.Id, wallet.Balance);
 
             try
             {
@@ -266,30 +271,34 @@ public class WalletService : BaseService, IWalletService
     {
         try
         {
-            _logger.LogInformation("Processing withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
+            _logger.LogInformation("Обработка вывода с кошелька {WalletAddress}", request.SourceWalletAddress);
 
-            // Validate request
+            // Валидация запроса
             var validationResult = await ValidateWithdrawalRequestAsync(request, cancellationToken);
             if (!validationResult.IsSuccess)
                 return validationResult;
 
-            // Get wallet with details
+            // Получение кошелька с деталями
             var wallet = await _walletRepository.GetByAddressWithDetailsAsync(request.SourceWalletAddress, cancellationToken);
             if (wallet == null)
             {
-                _logger.LogWarning("Wallet with address {WalletAddress} not found", request.SourceWalletAddress);
-                return Result.NotFound($"Wallet with address '{request.SourceWalletAddress}' not found.");
+                _logger.LogWarning("Кошелек с адресом {WalletAddress} не найден", request.SourceWalletAddress);
+                return Result.NotFound($"Кошелек с адресом '{request.SourceWalletAddress}' не найден.");
             }
 
-            // Check if wallet has sufficient balance (including fee)
+            // Проверка достаточности средств (с учетом комиссии)
             var balanceResult = await GetWalletBalanceAsync(request.SourceWalletAddress, cancellationToken);
             if (!balanceResult.IsSuccess)
                 return Result<TransactionDto>.Error(string.Join("; ", balanceResult.Errors));
 
             var availableBalance = balanceResult.Value.AvailableBalance;
-            
-            // Check daily withdrawal limit
-            var maxDailyWithdrawal = 10000m; // Example: 10,000 USD equivalent
+            var totalWithdrawalAmount = request.Amount + (request.Fee ?? 0m);
+
+            if (availableBalance < totalWithdrawalAmount)
+                return Result.Error("Недостаточно средств для выполнения вывода.");
+
+            // Проверка дневного лимита вывода
+            var maxDailyWithdrawal = 10000m; // Пример: 10,000 USD
             var dailyWithdrawals = await _transactionRepository.GetTotalWithdrawnAmountAsync(
                 wallet.UserId,
                 wallet.CryptocurrencyId,
@@ -298,30 +307,27 @@ public class WalletService : BaseService, IWalletService
 
             if (dailyWithdrawals + request.Amount > maxDailyWithdrawal)
             {
-                var currencyCode = wallet.Cryptocurrency?.Code ?? "crypto";
-                return Result.Error($"Daily withdrawal limit of {maxDailyWithdrawal} {currencyCode} exceeded.");
+                var currencyCode = wallet.Cryptocurrency?.Code ?? "криптовалюты";
+                return Result.Error($"Превышен дневной лимит вывода в размере {maxDailyWithdrawal} {currencyCode}.");
             }
 
-            // Validate fee
+            // Валидация комиссии
             decimal fee = request.Fee ?? 0m;
             if (fee < 0)
-                return Result.Error("Fee cannot be negative.");
+                return Result.Error("Комиссия не может быть отрицательной.");
 
-            if (availableBalance < request.Amount + fee)
-                return Result.Error("Insufficient balance to complete the withdrawal.");
-
-            // Validate IP address and user agent for security
+            // Валидация IP-адреса и User-Agent для безопасности
             if (!string.IsNullOrWhiteSpace(request.IpAddress) && !IsValidIpAddress(request.IpAddress))
-                return Result.Error("Invalid IP address format.");
+                return Result.Error("Неверный формат IP-адреса.");
 
             if (string.IsNullOrWhiteSpace(request.UserAgent))
-                return Result.Error("User-Agent header is required for security reasons.");
+                return Result.Error("Заголовок User-Agent обязателен по соображениям безопасности.");
 
-            // Create withdrawal transaction
+            // Создание транзакции вывода
             if (wallet.Cryptocurrency == null)
             {
-                _logger.LogError("Wallet {WalletAddress} has no associated cryptocurrency", wallet.Address);
-                return Result.Error("Internal error: Wallet has no associated cryptocurrency.");
+                _logger.LogError("Кошелек {WalletAddress} не имеет связанной криптовалюты", wallet.Address);
+                return Result.Error("Внутренняя ошибка: у кошелька нет связанной криптовалюты.");
             }
 
             var withdrawalTransaction = new Transaction(
@@ -334,13 +340,16 @@ public class WalletService : BaseService, IWalletService
                 request.DestinationAddress,
                 request.Notes);
 
-            // Mark transaction as processing
+            // Отметка транзакции как обрабатываемой
             withdrawalTransaction.MarkAsProcessing();
 
             try
             {
-                // Withdraw from wallet (includes fee)
-                wallet.Withdraw(request.Amount + (request.Fee ?? 0));
+                // Calculate total amount to withdraw (amount + fee)
+                var totalToWithdraw = request.Amount + fee;
+                
+                // Withdraw from wallet (amount + fee)
+                wallet.Withdraw(totalToWithdraw);
                 
                 // Save transaction and update wallet
                 await _transactionRepository.AddAsync(withdrawalTransaction, cancellationToken);
@@ -351,7 +360,7 @@ public class WalletService : BaseService, IWalletService
                 await _transactionRepository.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Successfully withdrew {Amount} {Currency} from wallet {WalletAddress} to {DestinationAddress}",
+                    "Успешный вывод {Amount} {Currency} с кошелька {WalletAddress} на {DestinationAddress}",
                     request.Amount, 
                     wallet.Cryptocurrency.Code,
                     request.SourceWalletAddress,
@@ -361,19 +370,19 @@ public class WalletService : BaseService, IWalletService
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogError(ex, "Failed to process withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
-                return Result.Error("Failed to process withdrawal: " + ex.Message);
+                _logger.LogError(ex, "Ошибка при обработке вывода с кошелька {WalletAddress}", request.SourceWalletAddress);
+                return Result.Error("Ошибка при обработке вывода: " + ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while processing withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
-                return Result.Error($"An unexpected error occurred while processing the withdrawal: {ex.Message}");
+                _logger.LogError(ex, "Произошла ошибка при обработке вывода с кошелька {WalletAddress}", request.SourceWalletAddress);
+                return Result.Error($"Произошла непредвиденная ошибка при обработке вывода: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error occurred while processing withdrawal from wallet {WalletAddress}", request.SourceWalletAddress);
-            return Result.Error($"An error occurred while processing the withdrawal from wallet '{request.SourceWalletAddress}': {ex.Message}");
+            _logger.LogError(ex, "Ошибка при обработке вывода с кошелька {WalletAddress}", request.SourceWalletAddress);
+            return Result.Error($"Произошла ошибка при обработке вывода с кошелька '{request.SourceWalletAddress}': {ex.Message}");
         }
     }
 
@@ -536,6 +545,13 @@ public class WalletService : BaseService, IWalletService
             if (!wallet.IsActive)
                 return Result.Error("The wallet is not active for withdrawals.");
 
+            // Validate User-Agent is provided
+            if (string.IsNullOrWhiteSpace(request.UserAgent))
+            {
+                _logger.LogWarning("User-Agent header is missing in withdrawal request for wallet: {WalletAddress}", request.SourceWalletAddress);
+                return Result.Error("User-Agent header is required.");
+            }
+
             return Result.Success();
         }
         catch (Exception ex)
@@ -593,7 +609,17 @@ public class WalletService : BaseService, IWalletService
             return false;
             
         // Use the WalletAddressValidator for consistent validation
-        return address.IsValidWalletAddress();
+        // Try to determine the crypto code from the address format
+        string? cryptoCode = null;
+        
+        // Check for Ethereum-style addresses (starts with 0x and is 42 chars long)
+        if (address.StartsWith("0x") && address.Length == 42)
+        {
+            cryptoCode = "eth";
+        }
+        // Add more checks for other crypto types if needed
+        
+        return address.IsValidWalletAddress(cryptoCode);
     }
 
     private bool IsValidTransactionHash(string hash)
@@ -601,8 +627,16 @@ public class WalletService : BaseService, IWalletService
         if (string.IsNullOrWhiteSpace(hash))
             return false;
 
-        // Basic format check for transaction hashes (adjust based on your needs)
-        return System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-fA-F0-9]{64,128}$");
+        // Remove 0x prefix if present
+        if (hash.StartsWith("0x"))
+        {
+            hash = hash[2..];
+        }
+
+        // Basic format check for transaction hashes (at least 32 hex characters)
+        // Most common lengths are 64 chars (32 bytes) and 66 chars (33 bytes with leading 0)
+        // But we'll be more permissive to handle different blockchains
+        return System.Text.RegularExpressions.Regex.IsMatch(hash, "^[a-fA-F0-9]{32,128}$");
     }
 
     private bool IsValidIpAddress(string ipAddress)
@@ -617,37 +651,93 @@ public class WalletService : BaseService, IWalletService
     {
         try
         {
+            _logger.LogInformation("Validating deposit request for wallet: {WalletAddress}", request?.WalletAddress);
+            
             if (request == null)
+            {
+                _logger.LogWarning("Deposit request is null");
                 return Result.Error("Deposit request cannot be null.");
+            }
 
             // Validate wallet address
-            if (string.IsNullOrWhiteSpace(request.WalletAddress) || !IsValidWalletAddress(request.WalletAddress))
+            if (string.IsNullOrWhiteSpace(request.WalletAddress))
+            {
+                _logger.LogWarning("Wallet address is null or empty");
+                return Result.Error("Wallet address cannot be empty.");
+            }
+
+            if (!IsValidWalletAddress(request.WalletAddress))
+            {
+                _logger.LogWarning("Invalid wallet address format: {WalletAddress}", request.WalletAddress);
                 return Result.Error("Invalid wallet address format.");
+            }
 
             // Validate amount
             if (request.Amount <= 0)
+            {
+                _logger.LogWarning("Invalid deposit amount: {Amount}", request.Amount);
                 return Result.Error("Deposit amount must be greater than zero.");
+            }
 
             // Validate fee (if provided)
             if (request.Fee < 0)
+            {
+                _logger.LogWarning("Invalid fee: {Fee}", request.Fee);
                 return Result.Error("Fee cannot be negative.");
+            }
 
             // Check if wallet exists
+            _logger.LogInformation("Checking if wallet exists: {WalletAddress}", request.WalletAddress);
             var wallet = await _walletRepository.GetByAddressWithDetailsAsync(request.WalletAddress, cancellationToken);
             if (wallet == null)
+            {
+                _logger.LogWarning("Wallet not found: {WalletAddress}", request.WalletAddress);
                 return Result.NotFound($"Wallet with address '{request.WalletAddress}' not found.");
+            }
 
             if (!wallet.IsActive)
+            {
+                _logger.LogWarning("Wallet is not active: {WalletAddress}", request.WalletAddress);
                 return Result.Error("The wallet is not active for deposits.");
+            }
 
             // Validate transaction hash if provided
-            if (!string.IsNullOrWhiteSpace(request.TransactionHash) && !IsValidTransactionHash(request.TransactionHash))
-                return Result.Error("Invalid transaction hash format.");
+            if (!string.IsNullOrWhiteSpace(request.TransactionHash))
+            {
+                // First validate the format
+                if (!IsValidTransactionHash(request.TransactionHash))
+                {
+                    _logger.LogWarning("Invalid transaction hash format: {TransactionHash}", request.TransactionHash);
+                    return Result.Error("Invalid transaction hash format.");
+                }
+                
+                // Then check for duplicate transaction
+                var existingTransaction = await _transactionRepository.GetByTransactionHashAsync(
+                    request.TransactionHash, 
+                    cancellationToken);
+                    
+                if (existingTransaction != null)
+                {
+                    _logger.LogWarning("Transaction with this hash already exists: {TransactionHash}", request.TransactionHash);
+                    return Result.Error("Transaction with this hash already exists.");
+                }
+            }
 
             // Validate IP address if provided
             if (!string.IsNullOrWhiteSpace(request.IpAddress) && !IsValidIpAddress(request.IpAddress))
+            {
+                _logger.LogWarning("Invalid IP address format: {IpAddress}", request.IpAddress);
                 return Result.Error("Invalid IP address format.");
+            }
 
+            // Validate User-Agent is provided
+            if (string.IsNullOrWhiteSpace(request.UserAgent))
+            {
+                _logger.LogWarning("User-Agent header is missing in deposit request for wallet: {WalletAddress}", request.WalletAddress);
+                return Result.Error("User-Agent header is required.");
+            }
+
+            _logger.LogInformation("Deposit request validation successful for wallet: {WalletAddress}", request.WalletAddress);
             return Result.Success();
         }
         catch (Exception ex)
