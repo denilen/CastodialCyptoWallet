@@ -71,20 +71,42 @@ public class UserServiceTests
             Wallets = new List<WalletDto>()
         };
 
+        // Create a user that will be returned by GetByIdAsync
+        var testUser = new User(
+            email: request.Email,
+            passwordHash: "hashed_password",
+            firstName: request.FirstName,
+            lastName: request.LastName);
+
+        // Mock GetByEmailAsync to return null (user doesn't exist yet)
         _userRepositoryMock
             .Setup(x => x.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(default(User));
+            .ReturnsAsync((User)null);
 
+        // Mock password hashing
         _passwordHasherMock
             .Setup(x => x.HashPassword(request.Password))
             .Returns("hashed_password");
 
+        // Mock AddAsync to capture the user
         _userRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback((User u, CancellationToken _) => user = u)
             .Returns(Task.CompletedTask);
 
+        // Mock SaveChangesAsync
+        _userRepositoryMock
+            .Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1); // Return 1 to indicate one record was affected
+
+        // Mock GetByIdAsync to return the created user
+        _userRepositoryMock
+            .Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => testUser);
+
+        // Mock the mapper to return our test DTO when called with the test user
         _mapperMock
-            .Setup(x => x.Map<UserDto>(It.IsAny<User>()))
+            .Setup(x => x.Map<UserDto>(It.Is<User>(u => u.Email == testUser.Email)))
             .Returns(userDto);
 
         // Act

@@ -417,8 +417,13 @@ public class WalletService : BaseService, IWalletService
                 return Result<TransactionDto>.Error(string.Join("; ", balanceResult.Errors));
 
             var availableBalance = balanceResult.Value.AvailableBalance;
-            if (availableBalance < request.Amount + (request.Fee ?? 0))
+            var totalAmount = request.Amount + (request.Fee ?? 0);
+            if (availableBalance < totalAmount)
+            {
+                _logger.LogWarning("Insufficient balance for transfer. Available: {AvailableBalance}, Required: {TotalAmount}", 
+                    availableBalance, totalAmount);
                 return Result.Error("Insufficient balance to complete the transfer.");
+            }
 
             // Get or create destination wallet
             var destinationWallet = await _walletRepository.GetByAddressWithDetailsAsync(
@@ -544,6 +549,20 @@ public class WalletService : BaseService, IWalletService
 
             if (!wallet.IsActive)
                 return Result.Error("The wallet is not active for withdrawals.");
+
+            // Validate IP address
+            if (string.IsNullOrWhiteSpace(request.IpAddress))
+            {
+                _logger.LogWarning("IP address is missing in withdrawal request for wallet: {WalletAddress}", request.SourceWalletAddress);
+                return Result.Error("IP address is required.");
+            }
+
+            if (!System.Net.IPAddress.TryParse(request.IpAddress, out _))
+            {
+                _logger.LogWarning("Invalid IP address format in withdrawal request for wallet: {WalletAddress}, IP: {IpAddress}", 
+                    request.SourceWalletAddress, request.IpAddress);
+                return Result.Error("Invalid IP address format.");
+            }
 
             // Validate User-Agent is provided
             if (string.IsNullOrWhiteSpace(request.UserAgent))
