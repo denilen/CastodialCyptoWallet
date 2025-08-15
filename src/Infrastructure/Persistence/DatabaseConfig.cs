@@ -45,6 +45,7 @@ public class DatabaseConfig
     /// </summary>
     public string GetConnectionString()
     {
-        return $"Host={Host};Port={Port};Database={Database};Username={Username};Password={Password};Maximum Pool Size={MaxPoolSize};";
+        return
+            $"Host={Host};Port={Port};Database={Database};Username={Username};Password={Password};Maximum Pool Size={MaxPoolSize};";
     }
 }

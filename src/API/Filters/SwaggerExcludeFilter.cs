@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text.Json.Serialization;
@@ -19,16 +17,16 @@ public class SwaggerExcludeFilter : ISchemaFilter
 
         // Get all properties that should be excluded
         var excludedProperties = context.Type.GetProperties()
-            .Where(t => 
+            .Where(t =>
                 t.GetCustomAttribute<JsonIgnoreAttribute>() != null ||
                 t.GetCustomAttribute<SwaggerExcludeAttribute>() != null);
 
         foreach (var excludedProperty in excludedProperties)
         {
             var propertyToRemove = schema.Properties.Keys
-                .SingleOrDefault(x => 
+                .SingleOrDefault(x =>
                     string.Equals(x, excludedProperty.Name, StringComparison.OrdinalIgnoreCase));
-                
+
             if (propertyToRemove != null)
             {
                 schema.Properties.Remove(propertyToRemove);

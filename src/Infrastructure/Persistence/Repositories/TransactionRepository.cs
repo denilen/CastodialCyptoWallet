@@ -41,7 +41,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
         var query = DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-                .ThenInclude(w => w.Cryptocurrency)
+            .ThenInclude(w => w.Cryptocurrency)
             .Where(t => t.WalletId == wallet.Id)
             .OrderByDescending(t => t.CreatedAt);
 
@@ -70,7 +70,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
         var query = DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-                .ThenInclude(w => w.Cryptocurrency)
+            .ThenInclude(w => w.Cryptocurrency)
             .Where(t => t.Wallet.UserId == user.Id)
             .OrderByDescending(t => t.CreatedAt);
 
@@ -116,7 +116,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
     {
         if (!Enum.IsDefined(typeof(TransactionStatusEnum), status))
             throw new ArgumentException("Invalid transaction status value.", nameof(status));
-            
+
         if (pageNumber < 1)
             throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number must be greater than 0.");
         if (pageSize < 1)
@@ -127,7 +127,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
         var query = DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-                .ThenInclude(w => w.Cryptocurrency)
+            .ThenInclude(w => w.Cryptocurrency)
             .Where(t => t.StatusEnum == status)
             .OrderBy(t => t.CreatedAt);
 
@@ -169,7 +169,7 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
         return await DbSet
             .AsNoTracking()
             .Include(t => t.Wallet)
-                .ThenInclude(w => w.Cryptocurrency)
+            .ThenInclude(w => w.Cryptocurrency)
             .Where(t => t.WalletId == walletId &&
                         t.TypeEnum == TransactionTypeEnum.Withdrawal &&
                         t.StatusEnum == TransactionStatusEnum.Pending)

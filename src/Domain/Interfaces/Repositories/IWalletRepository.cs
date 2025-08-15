@@ -1,4 +1,3 @@
-using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Currencies;
 using CryptoWallet.Domain.Users;
 using CryptoWallet.Domain.Wallets;

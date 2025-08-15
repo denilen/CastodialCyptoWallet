@@ -6,10 +6,7 @@ using CryptoWallet.API.Models.Wallets;
 using CryptoWallet.Application.Wallets;
 using CryptoWallet.Domain.Models.DTOs.Wallets;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System.Globalization;
 
 namespace CryptoWallet.API.Controllers;
 
@@ -51,9 +48,9 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение информации о кошельке с адресом: {Address}", address);
-        
+
         var result = await _walletService.GetWalletByAddressAsync(address, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно получена информация о кошельке {address}");
@@ -73,9 +70,9 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение баланса кошелька с адресом: {Address}", address);
-        
+
         var result = await _walletService.GetWalletBalanceAsync(address, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно получен баланс кошелька {address}");
@@ -97,11 +94,11 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Пополнение кошелька {Address} на сумму {Amount}", address, request.Amount);
-        
+
         // Получаем IP-адрес и User-Agent из контекста запроса
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
-        
+
         var depositRequest = new DepositRequest
         {
             WalletAddress = address,
@@ -111,9 +108,9 @@ public class WalletsController : ApiControllerBase
             IpAddress = ipAddress,
             UserAgent = userAgent
         };
-        
+
         var result = await _walletService.DepositFundsAsync(depositRequest, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно пополнен баланс кошелька {address} на сумму {request.Amount}");
@@ -135,11 +132,11 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Вывод средств с кошелька {Address} на сумму {Amount}", address, request.Amount);
-        
+
         // Получаем IP-адрес и User-Agent из контекста запроса
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
-        
+
         var withdrawRequest = new WithdrawRequest
         {
             SourceWalletAddress = address,
@@ -150,9 +147,9 @@ public class WalletsController : ApiControllerBase
             IpAddress = ipAddress,
             UserAgent = userAgent
         };
-        
+
         var result = await _walletService.WithdrawFundsAsync(withdrawRequest, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно инициирован вывод {request.Amount} с кошелька {address}");
@@ -173,18 +170,18 @@ public class WalletsController : ApiControllerBase
     {
         _logger.LogInformation("Инициирован перевод средств с кошелька {SourceWallet} на кошелек {DestinationWallet} на сумму {Amount}",
             request.SourceWalletAddress, request.DestinationWalletAddress, request.Amount);
-        
+
         // Получаем IP и User-Agent для аудита
         request.IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         request.UserAgent = HttpContext.Request.Headers.UserAgent.ToString();
-        
+
         var result = await _walletService.TransferFundsAsync(request, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно инициирован перевод {request.Amount} с кошелька {request.SourceWalletAddress} на {request.DestinationWalletAddress}");
     }
-    
+
     /// <summary>
     /// Получить все кошельки пользователя
     /// </summary>
@@ -199,14 +196,14 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение всех кошельков пользователя с ID: {UserId}", userId);
-        
+
         var result = await _walletService.GetUserWalletsByIdAsync(userId, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно получены кошельки пользователя с ID: {userId}");
     }
-    
+
     /// <summary>
     /// Получить балансы по всем валютам пользователя
     /// </summary>
@@ -221,14 +218,14 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение балансов по всем валютам пользователя с ID: {UserId}", userId);
-        
+
         var result = await _walletService.GetUserBalancesAsync(userId, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно получены балансы пользователя с ID: {userId}");
     }
-    
+
     /// <summary>
     /// Получить баланс пользователя по коду валюты
     /// </summary>
@@ -246,19 +243,19 @@ public class WalletsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение баланса пользователя {UserId} по валюте {Currency}", userId, currency);
-        
+
         // First get the wallet to check if it exists and get the balance
         var walletResult = await _walletService.GetUserWalletByCurrencyAsync(userId, currency, cancellationToken);
         if (!walletResult.IsSuccess)
         {
             return HandleResult(Result<decimal>.Error(walletResult.Errors.FirstOrDefault() ?? "Wallet not found"));
         }
-        
+
         return HandleResult(
             Result.Success(walletResult.Value.Balance),
             $"Успешно получен баланс пользователя {userId} в валюте {currency}");
     }
-    
+
     /// <summary>
     /// Пополнить баланс пользователя
     /// </summary>
@@ -276,11 +273,11 @@ public class WalletsController : ApiControllerBase
     {
         _logger.LogInformation("Пополнение баланса пользователя {UserId} на сумму {Amount} {Currency}",
             userId, request.Amount, request.Currency);
-        
+
         // Получаем IP и User-Agent для аудита
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
-        
+
         var result = await _walletService.DepositToUserWalletAsync(
             userId: userId,
             currencyCode: request.Currency,
@@ -288,12 +285,12 @@ public class WalletsController : ApiControllerBase
             transactionHash: request.TransactionHash,
             cancellationToken: cancellationToken
         );
-        
+
         return HandleResult(
             result,
             $"Успешно пополнен баланс пользователя {userId} на сумму {request.Amount} {request.Currency}");
     }
-    
+
     /// <summary>
     /// Вывести средства с кошелька пользователя
     /// </summary>
@@ -311,11 +308,11 @@ public class WalletsController : ApiControllerBase
     {
         _logger.LogInformation("Вывод средств пользователя {UserId} на сумму {Amount} {Currency} на адрес {DestinationAddress}",
             userId, request.Amount, request.Currency, request.DestinationAddress);
-        
+
         // Получаем IP и User-Agent для аудита
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
-        
+
         var result = await _walletService.WithdrawFromUserWalletAsync(
             userId: userId,
             currencyCode: request.Currency,
@@ -323,7 +320,7 @@ public class WalletsController : ApiControllerBase
             destinationAddress: request.DestinationAddress,
             cancellationToken: cancellationToken
         );
-        
+
         return HandleResult(
             result,
             $"Успешно инициирован вывод {request.Amount} {request.Currency} пользователя {userId} на адрес {request.DestinationAddress}");

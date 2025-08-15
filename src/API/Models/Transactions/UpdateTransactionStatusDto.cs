@@ -12,7 +12,7 @@ public class UpdateTransactionStatusDto
     /// </summary>
     [Required(ErrorMessage = "Статус транзакции обязателен")]
     public string Status { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Дополнительные примечания (опционально)
     /// </summary>

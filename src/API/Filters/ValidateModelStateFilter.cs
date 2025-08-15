@@ -1,10 +1,6 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using CryptoWallet.API.Models;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.AspNetCore.Http;
 
 namespace CryptoWallet.API.Filters;
 
@@ -18,7 +14,7 @@ public class ValidateModelStateFilter : IActionFilter
         if (!context.ModelState.IsValid)
         {
             var errors = new Dictionary<string, string[]>();
-            
+
             // Group errors by property name
             foreach (var key in context.ModelState.Keys)
             {
@@ -29,14 +25,14 @@ public class ValidateModelStateFilter : IActionFilter
                         .Select(e => e.ErrorMessage)
                         .Where(e => !string.IsNullOrEmpty(e))
                         .ToArray();
-                    
+
                     if (errorMessages.Length > 0)
                     {
                         errors.Add(key, errorMessages);
                     }
                 }
             }
-            
+
             // Create a standardized error response
             var response = new ApiResponse<object>
             {
@@ -44,11 +40,11 @@ public class ValidateModelStateFilter : IActionFilter
                 Error = "One or more validation errors occurred.",
                 ValidationErrors = errors
             };
-            
+
             context.Result = new BadRequestObjectResult(response);
         }
     }
-    
+
     public void OnActionExecuted(ActionExecutedContext context)
     {
         // No action needed after the action executes

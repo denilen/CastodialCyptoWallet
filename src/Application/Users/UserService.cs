@@ -63,7 +63,7 @@ public class UserService : BaseService, IUserService
             // Save user
             await _userRepository.AddAsync(user, cancellationToken);
             await _userRepository.SaveChangesAsync(cancellationToken);
-            
+
             // Get the created user with all related data
             var createdUser = await _userRepository.GetByIdAsync(user.Id, cancellationToken);
 

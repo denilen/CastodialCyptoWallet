@@ -1,9 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using CryptoWallet.API.Models;
-using Ardalis.Result;
 
 namespace CryptoWallet.API.Middleware;
 
@@ -43,9 +40,9 @@ public class GlobalExceptionHandlerMiddleware
             Success = false,
             Error = "An unexpected error occurred. Please try again later.",
             Data = null,
-            ValidationErrors = new Dictionary<string, string[]> 
-            { 
-                { "error", new[] { exception.Message } } 
+            ValidationErrors = new Dictionary<string, string[]>
+            {
+                { "error", new[] { exception.Message } }
             }
         };
 

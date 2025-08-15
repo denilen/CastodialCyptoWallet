@@ -1,12 +1,10 @@
-using System.Linq;
 using Ardalis.Result;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 
 namespace CryptoWallet.API.Controllers;
 
 /// <summary>
-/// Базовый контроллер API, предоставляющий общую функциональность для всех контроллеров
+/// Base API controller that provides common functionality for all controllers
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -22,12 +20,12 @@ public abstract class ApiControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Обрабатывает результат операции и возвращает соответствующий IActionResult
+    /// Processes the operation result and returns the appropriate IActionResult
     /// </summary>
-    /// <typeparam name="T">Тип возвращаемых данных</typeparam>
-    /// <param name="result">Результат операции</param>
-    /// <param name="successMessage">Сообщение об успешном выполнении (опционально)</param>
-    /// <returns>IActionResult с соответствующим статус-кодом</returns>
+    /// <typeparam name="T">Type of the returned data</typeparam>
+    /// <param name="result">Operation result</param>
+    /// <param name="successMessage">Success message (optional)</param>
+    /// <returns>IActionResult with the appropriate status code</returns>
     protected IActionResult HandleResult<T>(Result<T> result, string? successMessage = null)
     {
         if (result.IsSuccess)
@@ -36,7 +34,7 @@ public abstract class ApiControllerBase : ControllerBase
             {
                 _logger.LogInformation(successMessage);
             }
-            
+
             return Ok(result.Value);
         }
 
@@ -45,20 +43,21 @@ public abstract class ApiControllerBase : ControllerBase
         if (result.ValidationErrors != null && result.ValidationErrors.Any())
         {
             var validationErrors = result.ValidationErrors
-                .Select(v => new ValidationError(v.ErrorMessage, v.Identifier, v.ErrorCode, Ardalis.Result.ValidationSeverity.Error))
+                .Select(v => new ValidationError(v.ErrorMessage, v.Identifier, v.ErrorCode,
+                    Ardalis.Result.ValidationSeverity.Error))
                 .ToArray();
             nonGenericResult = Result.Invalid(validationErrors);
         }
-        
+
         return HandleErrorResult(nonGenericResult);
     }
 
     /// <summary>
-    /// Обрабатывает результат операции без возвращаемого значения
+    /// Processes an operation result without a return value
     /// </summary>
-    /// <param name="result">Результат операции</param>
-    /// <param name="successMessage">Сообщение об успешном выполнении (опционально)</param>
-    /// <returns>IActionResult с соответствующим статус-кодом</returns>
+    /// <param name="result">Operation result</param>
+    /// <param name="successMessage">Success message (optional)</param>
+    /// <returns>IActionResult with the appropriate status code</returns>
     protected IActionResult HandleResult(Result result, string? successMessage = null)
     {
         if (result.IsSuccess)
@@ -67,7 +66,7 @@ public abstract class ApiControllerBase : ControllerBase
             {
                 _logger.LogInformation(successMessage);
             }
-            
+
             return NoContent();
         }
 
@@ -75,25 +74,25 @@ public abstract class ApiControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Обрабатывает ошибки результата операции
+    /// Handles operation result errors
     /// </summary>
     private IActionResult HandleErrorResult(Result result)
     {
         if (result.Status == ResultStatus.NotFound)
         {
-            _logger.LogWarning("Ресурс не найден: {Error}", result.Errors.FirstOrDefault() ?? "Неизвестная ошибка");
+            _logger.LogWarning("Resource not found: {Error}", result.Errors.FirstOrDefault() ?? "Unknown error");
             return NotFound(new { errors = result.Errors });
         }
 
         if (result.Status == ResultStatus.Invalid)
         {
-            _logger.LogWarning("Некорректный запрос: {Error}", string.Join("; ", result.ValidationErrors));
+            _logger.LogWarning("Invalid request: {Error}", string.Join("; ", result.ValidationErrors));
             return BadRequest(new { errors = result.ValidationErrors });
         }
 
         if (result.Status == ResultStatus.Unauthorized)
         {
-            _logger.LogWarning("Ошибка авторизации: {Error}", result.Errors.FirstOrDefault() ?? "Неизвестная ошибка");
+            _logger.LogWarning("Authorization error: {Error}", result.Errors.FirstOrDefault() ?? "Unknown error");
             return Unauthorized(new { errors = result.Errors });
         }
 

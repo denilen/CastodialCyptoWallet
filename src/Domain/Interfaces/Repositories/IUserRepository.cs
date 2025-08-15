@@ -1,4 +1,3 @@
-using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Users;
 
 namespace CryptoWallet.Domain.Interfaces.Repositories;

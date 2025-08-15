@@ -1,4 +1,3 @@
-using Ardalis.Result;
 using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Application.Common.Models;
 using CryptoWallet.Application.Transactions.Dtos;

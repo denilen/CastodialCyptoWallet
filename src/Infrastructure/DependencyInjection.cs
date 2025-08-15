@@ -1,10 +1,3 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using CryptoWallet.Domain.Transactions;
-using CryptoWallet.Domain.Users;
-using CryptoWallet.Domain.Wallets;
 using CryptoWallet.Domain.Interfaces.Repositories;
 using CryptoWallet.Infrastructure.Persistence;
 using CryptoWallet.Infrastructure.Persistence.Repositories;
@@ -15,8 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using CryptoWallet.Application.Common.Interfaces;
 using CryptoWallet.Infrastructure.Services;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace CryptoWallet.Infrastructure;
 
@@ -38,7 +29,9 @@ public static class DependencyInjection
             Username = configuration["Database:Username"] ?? "ccw",
             Password = configuration["Database:Password"] ?? "ccw",
             MaxPoolSize = int.TryParse(configuration["Database:MaxPoolSize"], out var maxPoolSize) ? maxPoolSize : 100,
-            EnableSensitiveDataLogging = bool.TryParse(configuration["Database:EnableSensitiveDataLogging"], out var enableSensitiveDataLogging) && enableSensitiveDataLogging
+            EnableSensitiveDataLogging =
+                bool.TryParse(configuration["Database:EnableSensitiveDataLogging"],
+                    out var enableSensitiveDataLogging) && enableSensitiveDataLogging
         };
         services.AddSingleton(databaseConfig);
 
@@ -77,10 +70,10 @@ public static class DependencyInjection
 
         // Register services by convention (classes ending with "Service")
         var serviceTypes = typeof(ApplicationDbContext).Assembly.GetTypes()
-            .Where(t => t.Name.EndsWith("Service") && 
-                       t.IsClass && 
-                       !t.IsAbstract && 
-                       t.GetInterfaces().Any())
+            .Where(t => t.Name.EndsWith("Service") &&
+                        t.IsClass &&
+                        !t.IsAbstract &&
+                        t.GetInterfaces().Any())
             .ToList();
 
         foreach (var serviceType in serviceTypes)

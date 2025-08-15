@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Ardalis.GuardClauses;
 using CryptoWallet.Domain.Common;
 using CryptoWallet.Domain.Wallets;
@@ -34,6 +33,7 @@ public class Cryptocurrency : AuditableEntity
     /// Collection of wallets that hold this cryptocurrency
     /// </summary>
     private readonly List<Wallet> _wallets = new();
+
     public virtual IReadOnlyCollection<Wallet> Wallets => _wallets.AsReadOnly();
 
     // Private constructor for EF Core

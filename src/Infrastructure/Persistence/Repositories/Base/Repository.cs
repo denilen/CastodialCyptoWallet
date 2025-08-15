@@ -103,13 +103,14 @@ public abstract class Repository<TEntity> : IRepository<TEntity>
 
     /// <inheritdoc />
     public virtual async Task<bool> ExistsAsync(Expression<Func<TEntity, bool>> predicate,
-                                              CancellationToken cancellationToken = default)
+                                                CancellationToken cancellationToken = default)
     {
         return await DbSet.AnyAsync(predicate, cancellationToken);
     }
 
     /// <inheritdoc />
-    public virtual Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
+    public virtual Task<bool> AnyAsync(Expression<Func<TEntity, bool>> predicate,
+                                       CancellationToken cancellationToken = default)
     {
         return DbSet.AnyAsync(predicate, cancellationToken);
     }
@@ -122,7 +123,7 @@ public abstract class Repository<TEntity> : IRepository<TEntity>
 
     /// <inheritdoc />
     public virtual async Task<int> CountAsync(Expression<Func<TEntity, bool>>? predicate = null,
-                                            CancellationToken cancellationToken = default)
+                                              CancellationToken cancellationToken = default)
     {
         return predicate != null
             ? await DbSet.CountAsync(predicate, cancellationToken)

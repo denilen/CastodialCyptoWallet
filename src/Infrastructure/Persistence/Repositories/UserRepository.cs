@@ -79,13 +79,13 @@ public class UserRepository : Repository<User>, IUserRepository
                 // Generate unique wallet address
                 var walletAddress = GenerateWalletAddress(crypto.Code, user.Id);
                 var wallet = new Wallet(user, crypto, walletAddress);
-                
+
                 // Initialize collections to avoid null reference exceptions
                 if (crypto.Wallets == null)
                 {
                     crypto.GetType().GetProperty("Wallets")?.SetValue(crypto, new List<Wallet>());
                 }
-                
+
                 wallets.Add(wallet);
             }
 
@@ -106,7 +106,8 @@ public class UserRepository : Repository<User>, IUserRepository
         {
             // Log the exception if needed
             await transaction.RollbackAsync(cancellationToken);
-            throw new InvalidOperationException("Failed to create user with wallets. See inner exception for details.", ex);
+            throw new InvalidOperationException("Failed to create user with wallets. See inner exception for details.",
+                ex);
         }
     }
 
@@ -120,23 +121,23 @@ public class UserRepository : Repository<User>, IUserRepository
         string address;
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var random = new Random().Next(1000, 9999);
-        
+
         // Generate a basic address based on the crypto code and user ID
         address = $"{cryptoCode.ToLower()}_{userId.ToString("N")[..8]}_{timestamp}_{random}";
-        
+
         // Ensure the generated address meets our validation requirements
         if (!address.IsValidWalletAddress(cryptoCode))
         {
             // If the basic pattern doesn't match, fall back to a more generic but valid format
             address = $"wallet_{cryptoCode.ToLower()}_{userId:N}_{timestamp}";
-            
+
             // If still not valid, throw an exception
             if (!address.IsValidWalletAddress())
             {
                 throw new InvalidOperationException("Failed to generate a valid wallet address.");
             }
         }
-        
+
         return address;
     }
 }

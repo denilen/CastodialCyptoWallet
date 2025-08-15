@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using CryptoWallet.Domain.Enums;
 
 namespace CryptoWallet.API.Models.Transactions;
 
@@ -141,13 +140,13 @@ public class TransactionDto
     public static TransactionDto FromDomainWithRelated(Domain.Transactions.Transaction transaction)
     {
         var dto = FromDomain(transaction);
-        
+
         // Add related transaction info if exists
         if (transaction.RelatedTransaction != null)
         {
             dto.Description = $"{dto.Description} (Related to: {transaction.RelatedTransaction.Id})";
         }
-        
+
         return dto;
     }
 }

@@ -86,7 +86,7 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
             .AsNoTracking()
             .AnyAsync(w => w.Address == address, cancellationToken);
     }
-    
+
     /// <inheritdoc />
     public async Task<Wallet?> GetByAddressAsync(
         string address,
@@ -104,7 +104,7 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
     {
         if (id == Guid.Empty)
             throw new ArgumentException("ID cannot be empty.", nameof(id));
-            
+
         return await DbSet
             .AsNoTracking()
             .Include(w => w.User)
@@ -127,7 +127,7 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
             .OrderBy(w => w.Cryptocurrency.Code)
             .ToListAsync(cancellationToken);
     }
-    
+
     /// <inheritdoc />
     public async Task<Wallet?> GetUserWalletByCurrencyWithDetailsAsync(
         Guid userId,
@@ -136,7 +136,7 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
-            
+
         if (string.IsNullOrWhiteSpace(currencyCode))
             throw new ArgumentException("Currency code cannot be empty.", nameof(currencyCode));
 
@@ -144,7 +144,7 @@ public class WalletRepository : Repository<Wallet>, IWalletRepository
             .AsNoTracking()
             .Include(w => w.Cryptocurrency)
             .FirstOrDefaultAsync(
-                w => w.UserId == userId && 
+                w => w.UserId == userId &&
                      w.Cryptocurrency.Code == currencyCode.ToUpper(),
                 cancellationToken);
     }

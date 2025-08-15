@@ -1,7 +1,5 @@
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
-using System.Linq;
-using Microsoft.OpenApi.Any;
 
 namespace CryptoWallet.API.Filters;
 
@@ -20,7 +18,7 @@ public class AppendAuthorizeToSummaryOperationFilter : IOperationFilter
         {
             // Add " (Auth)" to the summary
             operation.Summary = $"{operation.Summary} (Auth)";
-            
+
             // Add security requirement
             operation.Security = new List<OpenApiSecurityRequirement>
             {
@@ -42,11 +40,11 @@ public class AppendAuthorizeToSummaryOperationFilter : IOperationFilter
                     }
                 }
             };
-            
+
             // Add 401 and 403 responses
             if (!operation.Responses.ContainsKey("401"))
                 operation.Responses.Add("401", new OpenApiResponse { Description = "Unauthorized" });
-                
+
             if (!operation.Responses.ContainsKey("403"))
                 operation.Responses.Add("403", new OpenApiResponse { Description = "Forbidden" });
         }

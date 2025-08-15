@@ -1,10 +1,5 @@
-using System.Net;
 using System.Text.Json;
 using CryptoWallet.API.Models;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Threading.Tasks;
 
 namespace CryptoWallet.API.Middleware;
 

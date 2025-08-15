@@ -1,15 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net.Mime;
-using Ardalis.Result;
 using AutoMapper;
 using CryptoWallet.API.Models;
 using CryptoWallet.API.Models.Transactions;
 using CryptoWallet.Application.Common.Models;
 using CryptoWallet.Application.Transactions;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 
 namespace CryptoWallet.API.Controllers;
 
@@ -54,9 +51,9 @@ public class TransactionsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение транзакции с ID: {TransactionId}", id);
-        
+
         var result = await _transactionService.GetTransactionByIdAsync(id, cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно получена транзакция с ID: {id}");
@@ -75,11 +72,11 @@ public class TransactionsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение списка транзакций с параметрами: {Query}", query);
-        
+
         // Apply filters using GetTransactionsByDateRangeAsync
         var startDate = query.StartDate ?? DateTimeOffset.UtcNow.AddDays(-30); // Default to last 30 days if not specified
         var endDate = query.EndDate ?? DateTimeOffset.UtcNow;
-        
+
         var result = await _transactionService.GetTransactionsByDateRangeAsync(
             startDate: startDate,
             endDate: endDate,
@@ -91,7 +88,7 @@ public class TransactionsController : ApiControllerBase
             minAmount: query.MinAmount,
             maxAmount: query.MaxAmount,
             cancellationToken: cancellationToken);
-        
+
         return HandleResult(
             result,
             "Успешно получен список транзакций");
@@ -114,13 +111,13 @@ public class TransactionsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Обновление статуса транзакции {TransactionId} на {Status}", id, request.Status);
-        
+
         var result = await _transactionService.UpdateTransactionStatusAsync(
             id,
             request.Status,
             request.Notes,
             cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно обновлен статус транзакции {id} на {request.Status}");
@@ -144,13 +141,13 @@ public class TransactionsController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Получение транзакций для кошелька: {WalletAddress}", walletAddress);
-        
+
         var result = await _transactionService.GetWalletTransactionsAsync(
             walletAddress,
             pageNumber,
             pageSize,
             cancellationToken);
-        
+
         return HandleResult(
             result,
             $"Успешно получены транзакции для кошелька {walletAddress}");

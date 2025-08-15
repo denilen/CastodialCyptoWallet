@@ -1,4 +1,3 @@
-using System;
 using System.Text.RegularExpressions;
 
 namespace CryptoWallet.Infrastructure.Extensions;
@@ -11,15 +10,15 @@ public static class WalletAddressValidator
     // These constants should be configured based on your specific requirements
     private const int MinAddressLength = 26;  // Minimum length for most crypto addresses
     private const int MaxAddressLength = 100; // Maximum length to prevent potential DoS attacks
-    
+
     // Common patterns for different cryptocurrencies (simplified examples)
-    private static readonly (string Prefix, string Pattern)[] CryptoPatterns = 
+    private static readonly (string Prefix, string Pattern)[] CryptoPatterns =
     {
-        ("btc", "^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$"),  // Bitcoin
-        ("eth", "^0x[a-fA-F0-9]{40}$"),                 // Ethereum
-        ("usdt", "^(T|1)[a-km-zA-HJ-NP-Z1-9]{33}$"),    // Tether (Omni/TRC20/ERC20)
-        ("xrp", "^r[0-9a-zA-Z]{24,34}$"),               // Ripple
-        ("ltc", "^[LM3][a-km-zA-HJ-NP-Z1-9]{26,33}$")   // Litecoin
+        ("btc", "^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$"), // Bitcoin
+        ("eth", "^0x[a-fA-F0-9]{40}$"),               // Ethereum
+        ("usdt", "^(T|1)[a-km-zA-HJ-NP-Z1-9]{33}$"),  // Tether (Omni/TRC20/ERC20)
+        ("xrp", "^r[0-9a-zA-Z]{24,34}$"),             // Ripple
+        ("ltc", "^[LM3][a-km-zA-HJ-NP-Z1-9]{26,33}$") // Litecoin
     };
 
     /// <summary>
@@ -53,7 +52,7 @@ public static class WalletAddressValidator
     private static bool ValidateSpecificCryptoAddress(string address, string cryptoCode)
     {
         var normalizedCryptoCode = cryptoCode.ToLowerInvariant();
-        
+
         foreach (var (prefix, pattern) in CryptoPatterns)
         {
             if (normalizedCryptoCode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -96,12 +95,12 @@ public static class WalletAddressValidator
 
         if (address.Length < MinAddressLength || address.Length > MaxAddressLength)
             throw new ArgumentException(
-                $"Wallet address must be between {MinAddressLength} and {MaxAddressLength} characters long.", 
+                $"Wallet address must be between {MinAddressLength} and {MaxAddressLength} characters long.",
                 paramName);
 
         if (!string.IsNullOrWhiteSpace(cryptoCode) && !ValidateSpecificCryptoAddress(address, cryptoCode))
             throw new ArgumentException(
-                $"Invalid {cryptoCode.ToUpperInvariant()} wallet address format.", 
+                $"Invalid {cryptoCode.ToUpperInvariant()} wallet address format.",
                 paramName);
 
         if (!ValidateGenericCryptoAddress(address))

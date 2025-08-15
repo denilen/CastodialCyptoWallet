@@ -8,7 +8,8 @@ namespace CryptoWallet.Infrastructure.Persistence.Configurations.Base;
 /// Basic configuration for entities with an audit
 /// </summary>
 /// <typeparam name="TEntity">Type of essence </typeparam>
-public abstract class BaseAuditableEntityConfiguration<TEntity> : IEntityTypeConfiguration<TEntity>
+public abstract class
+    BaseAuditableEntityConfiguration<TEntity> : IEntityTypeConfiguration<TEntity>
     where TEntity : AuditableEntity
 {
     public virtual void Configure(EntityTypeBuilder<TEntity> builder)
