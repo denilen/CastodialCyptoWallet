@@ -148,4 +148,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contact
 
-For questions and suggestions, please contact: [your.email@example.com](mailto:dennile@ngmai.com)
+For questions and suggestions, please contact: [dennilen@gmail.com](mailto:dennile@ngmai.com)

@@ -148,4 +148,4 @@ dotnet test
 
 ## Контакты
 
-По вопросам и предложениям обращайтесь: [ваш.email@example.com](mailto:ваш. dennile@ngmaiREADME.comm)
+По вопросам и предложениям обращайтесь: [dennilen@gmail.com](mailto:dennile@ngmai.com)
