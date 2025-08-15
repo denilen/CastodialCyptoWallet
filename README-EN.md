@@ -145,3 +145,7 @@ dotnet test
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contact
+
+For questions and suggestions, please contact: [your.email@example.com](mailto:dennile@ngmai.com)
